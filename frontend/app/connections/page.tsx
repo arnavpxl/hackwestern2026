@@ -11,6 +11,7 @@ export default function Connections() {
   const [form, setForm] = useState({ provider_id: "anthropic", label: "", team_id: "", key: "" });
   const [rotating, setRotating] = useState<{ id: number; key: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (!data) return <div className="card">Loading…</div>;
 
@@ -37,6 +38,27 @@ export default function Connections() {
     try {
       await post(`/api/connections/${rotating.id}/rotate`, { key: rotating.key });
       setRotating(null);
+      mutate();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncNow = async (id: number) => {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const r = await post(`/api/connections/${id}/sync`);
+      setNotice(
+        r.status === "ok" ? `Synced ${r.rows} hourly rows.`
+          : r.status === "up_to_date" ? "Already up to date."
+          : r.status === "busy" ? "A sync is already running."
+          : r.status === "error" ? `Sync failed: ${r.error}`
+          : `Skipped: ${r.reason}`,
+      );
       mutate();
     } catch (err) {
       setError((err as Error).message);
@@ -96,6 +118,7 @@ export default function Connections() {
       )}
 
       {error && <div className="card border-rose-200 bg-rose-50 text-sm text-rose-800">{error}</div>}
+      {notice && <div className="card border-indigo-200 bg-indigo-50 text-sm text-indigo-900">{notice}</div>}
 
       <div className="card overflow-x-auto">
         <table className="tbl">
@@ -128,6 +151,7 @@ export default function Connections() {
                         </span>
                       ) : (
                         <span className="flex justify-end gap-2">
+                          <button className="btn" disabled={busy} onClick={() => syncNow(c.id)}>Sync now</button>
                           <button className="btn" onClick={() => setRotating({ id: c.id, key: "" })}>Rotate key</button>
                           <button className="btn" onClick={() => revoke(c.id, c.label)}>Revoke</button>
                         </span>

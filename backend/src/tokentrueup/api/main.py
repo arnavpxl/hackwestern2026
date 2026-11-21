@@ -23,6 +23,7 @@ from .. import auth, connections
 from ..bench import metrics
 from ..config import settings
 from ..estimators.base import jsonable
+from ..ingest import sync as ingest_sync
 from ..orchestrator import close, recon
 from ..sim import world
 from ..sim.profiles import month_start
@@ -62,6 +63,8 @@ async def lifespan(app: FastAPI):
     pool = AsyncConnectionPool(settings.database_url, min_size=2, max_size=10, open=False)
     await pool.open()
     tasks = [asyncio.create_task(hub.listen())]
+    if os.environ.get("TTU_SYNC_ENABLED", "1") == "1":
+        tasks.append(asyncio.create_task(ingest_sync.run_scheduler(pool)))
     generator = world.LiveGenerator(pool)
     if os.environ.get("TTU_GENERATOR", "1") == "1":
         generator.start()
@@ -237,6 +240,16 @@ async def connection_rotate(connection_id: int, body: KeyUpdate, user: CurrentUs
             raise HTTPException(503, str(e)) from None
         await conn.commit()
     return ok({"rotated": connection_id})
+
+
+@app.post("/api/connections/{connection_id}/sync", dependencies=ADMIN)
+async def connection_sync(connection_id: int):
+    async with pool.connection() as conn:
+        try:
+            result = await ingest_sync.sync_connection(conn, connection_id)
+        except LookupError:
+            raise HTTPException(404, "no such connection") from None
+    return ok(result)
 
 
 @app.post("/api/connections/{connection_id}/revoke", dependencies=ADMIN)

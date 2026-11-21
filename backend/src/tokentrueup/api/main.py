@@ -23,6 +23,7 @@ from .. import auth, connections
 from ..bench import metrics
 from ..config import settings
 from ..estimators.base import jsonable
+from ..ingest import mapping as ingest_mapping
 from ..ingest import sync as ingest_sync
 from ..orchestrator import close, recon
 from ..sim import world
@@ -250,6 +251,53 @@ async def connection_sync(connection_id: int):
         except LookupError:
             raise HTTPException(404, "no such connection") from None
     return ok(result)
+
+
+class MapKey(BaseModel):
+    provider_key_id: str
+    workspace_id: str = ""
+    api_key_id: int | None = None
+    new_key: dict | None = None
+
+
+class UnmapKey(BaseModel):
+    provider_key_id: str
+    workspace_id: str = ""
+
+
+@app.get("/api/connections/{connection_id}", dependencies=VIEW)
+async def connection_detail(connection_id: int):
+    async with pool.connection() as conn:
+        try:
+            return ok(await ingest_mapping.connection_detail(conn, connection_id))
+        except LookupError:
+            raise HTTPException(404, "no such connection") from None
+
+
+@app.post("/api/connections/{connection_id}/mappings", dependencies=ADMIN)
+async def connection_map_key(connection_id: int, body: MapKey, user: CurrentUser):
+    async with pool.connection() as conn:
+        try:
+            api_key_id = await ingest_mapping.map_key(
+                conn, user["email"], connection_id, provider_key_id=body.provider_key_id,
+                workspace_id=body.workspace_id, api_key_id=body.api_key_id, new_key=body.new_key)
+        except LookupError:
+            raise HTTPException(404, "no such connection") from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "a key with that name already exists") from None
+        await conn.commit()
+    return ok({"api_key_id": api_key_id})
+
+
+@app.post("/api/connections/{connection_id}/mappings/remove", dependencies=ADMIN)
+async def connection_unmap_key(connection_id: int, body: UnmapKey, user: CurrentUser):
+    async with pool.connection() as conn:
+        await ingest_mapping.unmap_key(conn, user["email"], connection_id, provider_key_id=body.provider_key_id,
+                                       workspace_id=body.workspace_id)
+        await conn.commit()
+    return ok({"removed": True})
 
 
 @app.post("/api/connections/{connection_id}/revoke", dependencies=ADMIN)

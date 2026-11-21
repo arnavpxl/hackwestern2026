@@ -19,7 +19,7 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from .. import auth
+from .. import auth, connections
 from ..bench import metrics
 from ..config import settings
 from ..estimators.base import jsonable
@@ -183,6 +183,71 @@ async def new_user(body: NewUser):
             raise HTTPException(409, "that email already has an account") from None
         await conn.commit()
     return ok({"id": uid, "email": body.email.strip().lower(), "role": body.role})
+
+
+# ------------------------------------------------------------------ provider connections
+# Keys are write-only: they are accepted here, encrypted, and never returned by any route.
+
+
+class NewConnection(BaseModel):
+    provider_id: str
+    label: str
+    team_id: int
+    key_kind: str = "admin"
+    key: str
+
+
+class KeyUpdate(BaseModel):
+    key: str
+
+
+@app.get("/api/connections", dependencies=VIEW)
+async def connections_list():
+    async with pool.connection() as conn:
+        return ok(await connections.list_connections(conn))
+
+
+@app.post("/api/connections", dependencies=ADMIN)
+async def connection_add(body: NewConnection, user: CurrentUser):
+    async with pool.connection() as conn:
+        try:
+            cid = await connections.add_connection(conn, user["id"], user["email"], provider_id=body.provider_id,
+                                                   label=body.label, team_id=body.team_id, key_kind=body.key_kind,
+                                                   key=body.key)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(503, str(e)) from None
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "a connection with that name already exists") from None
+        await conn.commit()
+    return ok({"id": cid})
+
+
+@app.post("/api/connections/{connection_id}/rotate", dependencies=ADMIN)
+async def connection_rotate(connection_id: int, body: KeyUpdate, user: CurrentUser):
+    async with pool.connection() as conn:
+        try:
+            await connections.rotate_key(conn, user["email"], connection_id, body.key)
+        except LookupError:
+            raise HTTPException(404, "no such connection") from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except RuntimeError as e:
+            raise HTTPException(503, str(e)) from None
+        await conn.commit()
+    return ok({"rotated": connection_id})
+
+
+@app.post("/api/connections/{connection_id}/revoke", dependencies=ADMIN)
+async def connection_revoke(connection_id: int, user: CurrentUser):
+    async with pool.connection() as conn:
+        try:
+            await connections.revoke(conn, user["email"], connection_id)
+        except LookupError:
+            raise HTTPException(404, "no such connection") from None
+        await conn.commit()
+    return ok({"revoked": connection_id})
 
 
 # ------------------------------------------------------------------ state & live spend

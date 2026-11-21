@@ -12,6 +12,7 @@ dependencies = [
   "numpy>=2.1",
   "anthropic>=0.40",
   "sse-starlette>=2.1",
+  "cryptography>=43",
 ]
 
 [project.scripts]

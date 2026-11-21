@@ -1,4 +1,5 @@
-"use client";
+﻿"use client";
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { post, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
@@ -13,7 +14,7 @@ export default function Connections() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  if (!data) return <div className="card">Loading…</div>;
+  if (!data) return <div className="card">Loadingâ€¦</div>;
 
   // The key is sent once, then the field is cleared so it does not stay on screen.
   const add = async (e: FormEvent) => {
@@ -103,7 +104,7 @@ export default function Connections() {
           <label className="text-sm">Team
             <select className="mt-1 w-full rounded border border-slate-300 px-2 py-2" required value={form.team_id}
               onChange={(e) => setForm({ ...form, team_id: e.target.value })}>
-              <option value="">Choose…</option>
+              <option value="">Chooseâ€¦</option>
               {data.teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
@@ -112,7 +113,7 @@ export default function Connections() {
               autoComplete="off" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
           </label>
           <div className="flex items-end">
-            <button className="btn-primary w-full" disabled={busy || !form.team_id}>{busy ? "Saving…" : "Save connection"}</button>
+            <button className="btn-primary w-full" disabled={busy || !form.team_id}>{busy ? "Savingâ€¦" : "Save connection"}</button>
           </div>
         </form>
       )}
@@ -131,10 +132,10 @@ export default function Connections() {
             )}
             {data.connections.map((c: any) => (
               <tr key={c.id}>
-                <td className="font-medium">{c.label}</td>
+                <td className="font-medium"><Link className="text-indigo-700 hover:underline" href={`/connections/${c.id}`}>{c.label}</Link></td>
                 <td>{c.provider_name}</td>
                 <td>{c.team}</td>
-                <td className="font-mono text-xs">{c.status === "connected" ? `••••${c.key_last4}` : "—"}</td>
+                <td className="font-mono text-xs">{c.status === "connected" ? `â€¢â€¢â€¢â€¢${c.key_last4}` : "â€”"}</td>
                 <td><Status s={c.status} /></td>
                 <td className="whitespace-nowrap">{when(c.created_at)}{c.created_by && <div className="text-xs text-slate-500">{c.created_by}</div>}</td>
                 <td>{when(c.last_sync_at)}{c.last_error && <div className="text-xs text-rose-700">{c.last_error}</div>}</td>

@@ -4,8 +4,8 @@ import { useRef } from "react";
 export type TabDef<K extends string> = { key: K; label: string; count?: string | number };
 
 /** WAI-ARIA tabs with roving tabindex: ←/→ move, Home/End jump, selection follows focus. */
-export default function Tabs<K extends string>({ tabs, value, onChange, idPrefix }: {
-  tabs: TabDef<K>[]; value: K; onChange: (k: K) => void; idPrefix: string;
+export default function Tabs<K extends string>({ tabs, value, onChange, idPrefix, ariaLabel }: {
+  tabs: TabDef<K>[]; value: K; onChange: (k: K) => void; idPrefix: string; ariaLabel?: string;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const onKey = (e: React.KeyboardEvent, i: number) => {
@@ -19,7 +19,7 @@ export default function Tabs<K extends string>({ tabs, value, onChange, idPrefix
     refs.current[next]?.focus();
   };
   return (
-    <div role="tablist" aria-label="Case sections" className="flex gap-[22px] overflow-x-auto border-b border-line [scrollbar-width:none]">
+    <div role="tablist" aria-label={ariaLabel ?? "Sections"} className="flex gap-[22px] overflow-x-auto border-b border-line [scrollbar-width:none]">
       {tabs.map((t, i) => {
         const on = t.key === value;
         return (

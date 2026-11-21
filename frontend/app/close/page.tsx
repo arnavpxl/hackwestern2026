@@ -2,10 +2,12 @@
 import Link from "next/link";
 import { useState } from "react";
 import { post, usd, useApi, when } from "@/lib/api";
+import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
 
 export default function Close() {
   const { data, mutate } = useApi("/api/close/summary");
+  const me = useMe();
   const [busy, setBusy] = useState(false);
   if (!data) return <div className="card">Loading…</div>;
 
@@ -23,7 +25,7 @@ export default function Close() {
         <div className="flex flex-wrap gap-2">
           {Object.entries(data.by_status).map(([k, v]) => <span key={k}><Status s={k} /> {String(v)}</span>)}
         </div>
-        <button className="btn-primary ml-auto" disabled={busy} onClick={run}>{busy ? "Running close…" : "Run close"}</button>
+        <button className="btn-primary ml-auto" disabled={busy || !allowed(me, "controller")} onClick={run}>{busy ? "Running close…" : "Run close"}</button>
       </div>
 
       <div className="card overflow-x-auto">
@@ -41,7 +43,7 @@ export default function Close() {
                 <td className="num">{usd(c.estimate_cents)}</td>
                 <td className="num">{c.confidence != null ? `${Math.round(c.confidence * 100)}%` : "—"}</td>
                 <td><Status s={c.status} /></td>
-                <td>{c.status === "pending_approval" && <button className="btn" onClick={() => approve(c.id)}>Approve</button>}</td>
+                <td>{c.status === "pending_approval" && allowed(me, "controller") && <button className="btn" onClick={() => approve(c.id)}>Approve</button>}</td>
               </tr>
             ))}
           </tbody>

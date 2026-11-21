@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { API, post, useApi, when } from "@/lib/api";
+import { allowed, useMe } from "./auth-gate";
 
 const NAV = [
   ["/", "Live spend"],
@@ -17,6 +18,7 @@ export default function Header() {
   const path = usePathname();
   const router = useRouter();
   const { data: s, mutate } = useApi("/api/state", 1000);
+  const me = useMe();
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [demoOpen, setDemoOpen] = useState(false);
@@ -37,7 +39,7 @@ export default function Header() {
 
   // anomaly cases are opened by a job inside the database; it NOTIFYs, the API relays over SSE
   useEffect(() => {
-    const es = new EventSource(`${API}/api/events`);
+    const es = new EventSource(`${API}/api/events`, { withCredentials: true });
     es.addEventListener("case", (e) => {
       try {
         const d = JSON.parse((e as MessageEvent).data);
@@ -61,6 +63,11 @@ export default function Header() {
     try { await fn(); } catch (e) { setToast(`${label} failed: ${(e as Error).message}`); }
     setBusy(null);
     mutate();
+  };
+
+  const signOut = async () => {
+    await post("/api/auth/logout").catch(() => {});
+    window.location.reload();
   };
 
   const startDemo = async () => {
@@ -94,18 +101,20 @@ export default function Header() {
             </Link>
           ))}
         </nav>
-        <button className="btn-demo" disabled={!!busy} onClick={() => setDemoOpen(true)}>
-          <span aria-hidden>▶</span> Run product demo
-        </button>
+        {allowed(me, "admin") && (
+          <button className="btn-demo" disabled={!!busy} onClick={() => setDemoOpen(true)}>
+            <span aria-hidden>▶</span> Run product demo
+          </button>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
           <span className="tabular-nums text-slate-600" title="sim clock">
             {s ? when(s.sim_now) : "connecting…"}
             {s && <span className="ml-2 text-xs text-slate-400">{Math.round(s.ingest_eps ?? 0).toLocaleString()} ev/s</span>}
           </span>
-          {s && (s.paused
+          {s && allowed(me, "admin") && (s.paused
             ? <button className="btn" onClick={() => act("play", () => post("/api/sim/play"))}>▶ Play</button>
             : <button className="btn" onClick={() => act("pause", () => post("/api/sim/pause"))}>⏸ Pause</button>)}
-          <select className="btn" value="" disabled={!!busy}
+          {allowed(me, "admin") && <select className="btn" value="" disabled={!!busy}
             onChange={(e) => {
               const v = e.target.value;
               if (v.startsWith("ff:")) act("fast-forward", () => post("/api/sim-fast-forward", { target: v.slice(3) }));
@@ -121,7 +130,9 @@ export default function Header() {
             <option value="ff:month_end">⏩ Fast-forward to month end</option>
             <option value="ff:invoices">⏩ Fast-forward to invoices</option>
             <option value="reset">↺ Reset demo</option>
-          </select>
+          </select>}
+          {me && <span className="text-slate-600">{me.name} · <span className="font-semibold">{me.role}</span></span>}
+          <button className="btn" onClick={signOut}>Sign out</button>
           <span className={`pill ${s?.llm_mode === "live" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}
             title={s?.llm_model ?? "deterministic fallback agents"}>
             agents: {s?.llm_mode ?? "?"}

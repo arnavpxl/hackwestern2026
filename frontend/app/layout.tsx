@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import AuthGate from "./auth-gate";
 import Header from "./header";
 import "./globals.css";
 
@@ -11,8 +12,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <Header />
-        <main className="mx-auto max-w-7xl space-y-4 px-4 py-6">{children}</main>
+        <AuthGate>
+          <Header />
+          <main className="mx-auto max-w-7xl space-y-4 px-4 py-6">{children}</main>
+        </AuthGate>
       </body>
     </html>
   );

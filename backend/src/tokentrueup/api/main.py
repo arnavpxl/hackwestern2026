@@ -8,10 +8,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Annotated, Any
 
 import psycopg
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -19,6 +19,7 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from .. import auth
 from ..bench import metrics
 from ..config import settings
 from ..estimators.base import jsonable
@@ -72,7 +73,36 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="TokenTrueUp", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Only the web app's origins may call the API with cookies (a wildcard origin cannot be used with credentials).
+app.add_middleware(CORSMiddleware, allow_origins=settings.web_origins.split(","), allow_credentials=True,
+                   allow_methods=["*"], allow_headers=["*"])
+
+
+async def current_user(request: Request) -> dict:
+    token = request.cookies.get(auth.COOKIE)
+    if not token:
+        raise HTTPException(401, "not signed in")
+    async with pool.connection() as conn:
+        user = await auth.user_from_session(conn, token)
+    if user is None:
+        raise HTTPException(401, "session expired; sign in again")
+    return user
+
+
+CurrentUser = Annotated[dict, Depends(current_user)]
+
+
+def require(role: str):
+    async def check(user: CurrentUser) -> dict:
+        if not auth.has_role(user["role"], role):
+            raise HTTPException(403, f"this needs the {role} role")
+        return user
+    return check
+
+
+VIEW = [Depends(require("viewer"))]
+CONTROL = [Depends(require("controller"))]
+ADMIN = [Depends(require("admin"))]
 
 
 def ok(data: Any) -> dict:
@@ -85,9 +115,79 @@ async def rows(conn, sql: str, params: Any = None) -> list[dict]:
         return await cur.fetchall()
 
 
+# ------------------------------------------------------------------ accounts & sessions
+
+login_guard = auth.LoginGuard()
+
+
+class Login(BaseModel):
+    email: str
+    password: str
+
+
+class NewUser(BaseModel):
+    email: str
+    name: str
+    role: str
+    password: str
+
+
+@app.post("/api/auth/login")
+async def login(body: Login, response: Response):
+    email = body.email.strip().lower()
+    if login_guard.blocked(email):
+        raise HTTPException(429, "too many failed sign-ins; try again in 15 minutes")
+    async with pool.connection() as conn:
+        user = await auth.authenticate(conn, email, body.password)
+        if user is None:
+            login_guard.fail(email)
+            raise HTTPException(401, "email or password is incorrect")
+        login_guard.clear(email)
+        token = await auth.create_session(conn, user["id"])
+        await conn.commit()
+    response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
+                        max_age=int(auth.SESSION_TTL.total_seconds()), path="/")
+    return ok(user)
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request, response: Response):
+    token = request.cookies.get(auth.COOKIE)
+    if token:
+        async with pool.connection() as conn:
+            await auth.delete_session(conn, token)
+            await conn.commit()
+    response.delete_cookie(auth.COOKIE, path="/")
+    return ok({"signed_out": True})
+
+
+@app.get("/api/auth/me")
+async def me(user: CurrentUser):
+    return ok(user)
+
+
+@app.get("/api/auth/users", dependencies=ADMIN)
+async def users():
+    async with pool.connection() as conn:
+        return ok(await auth.list_users(conn))
+
+
+@app.post("/api/auth/users", dependencies=ADMIN)
+async def new_user(body: NewUser):
+    async with pool.connection() as conn:
+        try:
+            uid = await auth.create_user(conn, body.email, body.name, body.password, body.role)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "that email already has an account") from None
+        await conn.commit()
+    return ok({"id": uid, "email": body.email.strip().lower(), "role": body.role})
+
+
 # ------------------------------------------------------------------ state & live spend
 
-@app.get("/api/state")
+@app.get("/api/state", dependencies=VIEW)
 async def state():
     async with pool.connection() as conn:
         s = await world.get_state(conn)
@@ -96,7 +196,7 @@ async def state():
         return ok(s)
 
 
-@app.get("/api/spend/live")
+@app.get("/api/spend/live", dependencies=VIEW)
 async def spend_live(minutes: int = 60):
     async with pool.connection() as conn:
         s = await world.get_state(conn)
@@ -138,13 +238,13 @@ async def spend_live(minutes: int = 60):
 
 # ------------------------------------------------------------------ close & cases
 
-@app.post("/api/close/run")
+@app.post("/api/close/run", dependencies=CONTROL)
 async def close_run():
     async with pool.connection() as conn:
         return ok(await close.run_close(conn))
 
 
-@app.get("/api/close/summary")
+@app.get("/api/close/summary", dependencies=VIEW)
 async def close_summary():
     async with pool.connection() as conn:
         s = await world.get_state(conn)
@@ -168,7 +268,7 @@ async def close_summary():
                    "by_status": by_status, "by_type_cents": by_type, "cases": cases})
 
 
-@app.get("/api/cases/{case_id}")
+@app.get("/api/cases/{case_id}", dependencies=VIEW)
 async def case_detail(case_id: int):
     async with pool.connection() as conn:
         c = await rows(conn, """SELECT c.*, k.label AS key_label, p.name AS provider_name FROM obligation_cases c
@@ -192,20 +292,20 @@ class Reply(BaseModel):
     body: str
 
 
-@app.post("/api/cases/{case_id}/reply")
+@app.post("/api/cases/{case_id}/reply", dependencies=CONTROL)
 async def case_reply(case_id: int, r: Reply):
     async with pool.connection() as conn:
         return ok(await close.handle_reply(conn, case_id, r.body))
 
 
-@app.post("/api/cases/{case_id}/approve")
+@app.post("/api/cases/{case_id}/approve", dependencies=CONTROL)
 async def case_approve(case_id: int):
     async with pool.connection() as conn:
         await close.approve(conn, case_id)
         return ok({"approved": case_id})
 
 
-@app.post("/api/cases/{case_id}/rerun/{query_index}")
+@app.post("/api/cases/{case_id}/rerun/{query_index}", dependencies=CONTROL)
 async def case_rerun(case_id: int, query_index: int):
     """Re-execute the exact stored SQL + params: every number is reproducible."""
     async with pool.connection() as conn:
@@ -224,7 +324,7 @@ async def case_rerun(case_id: int, query_index: int):
         return ok({"rows": result, "ms": round(ms, 2), "matches_stored": result == q["rows"], "stored": q["rows"]})
 
 
-@app.get("/api/approvals")
+@app.get("/api/approvals", dependencies=VIEW)
 async def approvals():
     async with pool.connection() as conn:
         return ok(await rows(conn, """SELECT c.*, k.label AS key_label FROM obligation_cases c
@@ -234,7 +334,7 @@ async def approvals():
 
 # ------------------------------------------------------------------ reconciliation & rules
 
-@app.get("/api/recon")
+@app.get("/api/recon", dependencies=VIEW)
 async def recon_view():
     async with pool.connection() as conn:
         s = await world.get_state(conn)
@@ -246,26 +346,26 @@ async def recon_view():
         return ok({"period": s["close_period"], "invoices": invoices, "rules": rules})
 
 
-@app.post("/api/recon/run")
+@app.post("/api/recon/run", dependencies=CONTROL)
 async def recon_run():
     async with pool.connection() as conn:
         return ok(await recon.reconcile_pending(conn))
 
 
-@app.post("/api/rules/{rule_id}/replay")
+@app.post("/api/rules/{rule_id}/replay", dependencies=CONTROL)
 async def rule_replay(rule_id: int):
     async with pool.connection() as conn:
         return ok(await recon.replay_rule(conn, rule_id))
 
 
-@app.post("/api/rules/{rule_id}/activate")
+@app.post("/api/rules/{rule_id}/activate", dependencies=CONTROL)
 async def rule_activate(rule_id: int):
     async with pool.connection() as conn:
         await recon.activate_rule(conn, rule_id)
         return ok(await recon.replay_rule(conn, rule_id))
 
 
-@app.post("/api/rules/{rule_id}/reject")
+@app.post("/api/rules/{rule_id}/reject", dependencies=CONTROL)
 async def rule_reject(rule_id: int):
     async with pool.connection() as conn:
         await conn.execute("UPDATE learned_rules SET status = 'rejected' WHERE id = %s", (rule_id,))
@@ -285,14 +385,14 @@ class FastForward(BaseModel):
     hours: float = 0
 
 
-@app.post("/api/demo/start")
+@app.post("/api/demo/start", dependencies=ADMIN)
 async def demo_start():
     """Start the canonical product demo from a clean, useful state."""
     async with pool.connection() as conn:
         return ok(await world.start_demo(conn))
 
 
-@app.post("/api/sim/{action}")
+@app.post("/api/sim/{action}", dependencies=ADMIN)
 async def sim_action(action: str):
     async with pool.connection() as conn:
         if action in ("play", "pause"):
@@ -305,7 +405,7 @@ async def sim_action(action: str):
         return ok(await world.get_state(conn))
 
 
-@app.post("/api/sim-speed")
+@app.post("/api/sim-speed", dependencies=ADMIN)
 async def sim_speed(s: SimSpeed):
     async with pool.connection() as conn:
         await conn.execute("UPDATE sim_state SET target_eps = %s", (max(100, min(s.eps, 20000)),))
@@ -313,7 +413,7 @@ async def sim_speed(s: SimSpeed):
         return ok(await world.get_state(conn))
 
 
-@app.post("/api/sim-fast-forward")
+@app.post("/api/sim-fast-forward", dependencies=ADMIN)
 async def sim_fast_forward(ff: FastForward):
     async with pool.connection() as conn:
         s = await world.get_state(conn)
@@ -329,7 +429,7 @@ async def sim_fast_forward(ff: FastForward):
         return ok(await world.fast_forward(conn, to))
 
 
-@app.post("/api/scenario/{name}")
+@app.post("/api/scenario/{name}", dependencies=ADMIN)
 async def scenario(name: str, on: bool = True, key: str = world.RUNAWAY_KEY):
     async with pool.connection() as conn:
         fn = {
@@ -344,7 +444,7 @@ async def scenario(name: str, on: bool = True, key: str = world.RUNAWAY_KEY):
         return ok(await fn())
 
 
-@app.get("/api/late-data-check")
+@app.get("/api/late-data-check", dependencies=VIEW)
 async def late_data_check(hour: datetime):
     async with pool.connection() as conn:
         return ok(await world.late_data_check(conn, hour))
@@ -352,25 +452,25 @@ async def late_data_check(hour: datetime):
 
 # ------------------------------------------------------------------ under the hood
 
-@app.get("/api/uth/stats")
+@app.get("/api/uth/stats", dependencies=VIEW)
 async def uth_stats():
     async with pool.connection() as conn:
         return ok(await metrics.stats(conn))
 
 
-@app.post("/api/uth/race")
+@app.post("/api/uth/race", dependencies=ADMIN)
 async def uth_race():
     async with pool.connection() as conn:
         return ok(await metrics.race(conn))
 
 
-@app.post("/api/uth/freshness")
+@app.post("/api/uth/freshness", dependencies=ADMIN)
 async def uth_freshness():
     async with pool.connection() as conn:
         return ok(await metrics.freshness_probe(conn))
 
 
-@app.get("/api/events")
+@app.get("/api/events", dependencies=VIEW)
 async def events():
     q: asyncio.Queue = asyncio.Queue()
     hub.subs.add(q)

@@ -69,7 +69,7 @@ async def stats(conn: AsyncConnection) -> dict[str, Any]:
     out["caggs"] = await _rows(conn, """
       SELECT ca.view_name, ca.materialized_only,
              _timescaledb_functions.to_timestamp(_timescaledb_functions.cagg_watermark(h.id)) AS watermark,
-             js.last_successful_finish AS last_refresh, j.schedule_interval::text AS every,
+             NULLIF(js.last_successful_finish, '-infinity') AS last_refresh, j.schedule_interval::text AS every,
              j.config->>'start_offset' AS start_offset, j.config->>'end_offset' AS end_offset
       FROM timescaledb_information.continuous_aggregates ca
       JOIN _timescaledb_catalog.hypertable h ON h.table_name = ca.materialization_hypertable_name
@@ -79,7 +79,7 @@ async def stats(conn: AsyncConnection) -> dict[str, Any]:
       ORDER BY ca.view_name""")
     out["jobs"] = await _rows(conn, """
       SELECT j.job_id, j.proc_name, coalesce(j.hypertable_name, '') AS target, j.schedule_interval::text AS every,
-             js.last_run_status, js.last_successful_finish, js.total_runs, js.total_failures,
+             js.last_run_status, NULLIF(js.last_successful_finish, '-infinity') AS last_successful_finish, js.total_runs, js.total_failures,
              round(extract(epoch FROM js.last_run_duration) * 1000)::int AS last_ms
       FROM timescaledb_information.jobs j LEFT JOIN timescaledb_information.job_stats js USING (job_id)
       WHERE j.job_id >= 1000 ORDER BY j.job_id""")

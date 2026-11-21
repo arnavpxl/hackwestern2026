@@ -6,22 +6,16 @@ The original product spec was the first message of the previous session; the pla
 
 ## State (as of the handoff)
 
-- Repo moved from `~/Documents/hackwestern2026` (iCloud-synced, which made file reads hang) to
-  `~/hackwestern2026`.
-- **Uncommitted work.** The last commit is `c8f6777` (stage 2: simulator + estimators). Not yet
-  committed: agents, verifier, orchestrator (close + recon), API, bench metrics, tests,
-  migrations 0007–0012. **Commit first.**
-- **DB:** TimescaleDB 2.32 / PG17 in Docker at `localhost:5433`
-  (`postgresql://postgres:tokentrueup@localhost:5433/tokentrueup`). Migrations 0001–0012 are applied.
-  About 20M rows of `usage_events` are loaded, at 90.6% columnstore compression.
-  `docker-compose.yml` pins `name: hackwestern2026`, so the existing volume is reused.
-- **The sim may be half-reset.** A `/api/sim/reset` and a manual `usage_1m` refresh were interrupted.
-  Check `SELECT * FROM sim_state` and the cagg watermarks:
-  ```sql
-  SELECT view_name, _timescaledb_functions.to_timestamp(_timescaledb_functions.cagg_watermark(h.id))
-  FROM timescaledb_information.continuous_aggregates ca
-  JOIN _timescaledb_catalog.hypertable h ON h.table_name = ca.materialization_hypertable_name;
-  ```
+- Repo is at `~/hackwestern2026` (moved off iCloud, which made file reads hang). Backend is **done and
+  committed**; everything below "Then" is still to build.
+- **DB:** TimescaleDB 2.32 / PG17 in Docker at `localhost:5433`. Migrations 0001–0013 applied. About 28.9M
+  `usage_events` rows (20M backfill plus demo runs); raw 90.6% compressed, caggs 38–92%.
+- **Setup:** `make up` (DB, venv, migrate, and seed + backfill + `make compress` only if empty), then
+  `make demo` (API with the in-process generator on :8000). Also `make flow` (scripted end-to-end demo,
+  `backend/scripts/demo_flow.py`), `make bench` (writes `BENCHMARKS.md`), `make test`, `make lint`,
+  `make reset`.
+- **Live LLM mode is on locally:** `.env` has an `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL=claude-haiku-4-5`
+  (the original `claude-haiku-4.5` 404'd, so every agent silently fell back). `.env` is gitignored.
 - The test DB `tokentrueup_test` is created and dropped by `backend/tests/conftest.py`.
 
 ## Environment gotchas
@@ -43,45 +37,41 @@ The original product spec was the first message of the previous session; the pla
 
 ## Verified so far
 
-- 27/27 tests pass: cagg == raw (including late data and real-time visibility), every estimator against
-  hand-computed values, the SQL anomaly detector, the verifier, and the fallback agents.
-- Backfill: 20M rows in 47s (424k rows/s), 3.5 GB → 327 MB.
-- Anomaly detection runs in the DB (`detect_anomalies` job, every 5s). The demo key
-  `support-triage-agent` is caught in about 5s wall clock (4.1s from spike to case).
-  `scan_anomalies` takes about 165 ms.
-- Close flow via the API, through approvals: 12 cases, $384,662.17 accrued. Owner reply → `bug_fixed`
-  stops the runaway; orphan key reply → owner assigned.
+- 27/27 tests pass; ruff clean.
+- **Full flow (`make flow`) runs clean end to end with live LLM:** reset → play → stealth_price +
+  duplicate_invoice → close ($370k) → runaway caught in ~5–8 s → owner reply stops it → orphan reply
+  assigns an owner → fast-forward to month end → close → approve all ($384k) → fast-forward to invoices
+  → recon. Diagnoses: nimbus-pro rate change (+$8.3k), duplicate Stratus invoice, Cortexa 50% cached
+  discount, Helio +2.5% GPU-hours, Quill orphan key (this month $0 after the reply; history −25%).
+  Rule replay: every rule takes Aug–Nov error to 0.0%.
+- `BENCHMARKS.md` (via `make bench`): 30-day query raw 1.78 s vs cagg 1.8 ms (~1000×, totals match);
+  real-time visibility ~5 ms; `scan_anomalies` ~23 ms; COPY ~250k rows/s; 18 provider-months
+  re-accrued in ~360 ms; runaway to case ~8 s.
+- Fixed this session (see commit `87fff1c` and the later one): reset rewinds future cagg watermarks
+  (catalog write, needs superuser; on Tiger Cloud fall back to a full rebuild if refused), trims the
+  last 10 min and waits out the generator tick; fast-forward tail at live density; rate-based
+  `spike_start` (0013); invoice sim and diagnosis price stealth rates with discounts; invoice-delivery
+  advisory lock; close LLM calls run concurrently (72 s → 9 s).
 
-## Remaining (backend), in order
+## Known rough edges
 
-1. **Verify the fast-forward fix** in `backend/src/tokentrueup/sim/world.py`. It's written but has
-   never run: the gap clamp in `LiveGenerator._run`, plus `refresh_ahead()` and 5-minute density in
-   `fast_forward`. The bug: after a fast-forward the generator tried to back-fill the whole gap, and the
-   fast-forwarded data sat above the cagg watermark, so every estimate re-aggregated weeks of raw rows.
-2. **Reset vs watermark.** After a fast-forward the watermarks are in the future. Check whether
-   `reset_world` leaves them there. If so, make reset do a full reseed + backfill (about 2 min).
-3. **Full flow incl. reconciliation** (script: `/api/sim/reset` → `/api/sim/play` → scenarios
-   `stealth_price` and `duplicate_invoice` → `/api/close/run` → `/api/scenario/runaway` → reply →
-   `/api/sim-fast-forward {"target":"month_end"}` → close → approve all →
-   `/api/sim-fast-forward {"target":"invoices"}` → `/api/recon/run` → `/api/recon`).
-   `orchestrator/recon.py` has **never run end to end**. Expected diagnoses: rate change (nimbus-pro
-   output, unannounced), duplicate stratus invoice, ownerless quill key (resolved by reply this month,
-   but present in history), Helio about 2.5% late metering, Cortexa 50% cached discount. Rule replay
-   should show the error dropping across Aug, Sep and Oct.
-4. `backend/src/tokentrueup/bench/run_benchmarks.py` → `BENCHMARKS.md`, using `bench/metrics.py`
-   (stats, `race()`, `freshness_probe()`).
-5. Makefile for 2-command setup (`make up`, `make demo`), then commit.
+- `/api/recon/run` takes ~15 s in live mode: variance narrators still run one invoice at a time
+  (`orchestrator/recon.py: reconcile`). Same fix as close (gather after the deterministic part).
+- The anomaly case's own `estimate_cents` stays NULL (its excess is folded into the usage case via
+  `exclude_window`); the UI should show the usage case's number.
+- The detector opens at most one case per key per 6 h, so repeat a runaway on another key or reset.
+- The rewind uses a catalog UPDATE (`_timescaledb_catalog.continuous_aggs_watermark`). Check on
+  Tiger Cloud; if refused, reset logs a warning and live data stays invisible until a rebuild.
 
-## Then
+## Then (next steps, in order)
 
 - Next.js + Tailwind + Recharts frontend, 7 pages. Use the `node_modules.nosync` + symlink trick only
   if the repo ever goes back under iCloud.
-- README: problem, Mermaid diagram with Tiger Data at the centre, why each Tiger feature, 2-command
+- README: frame it as **AI usage spend** (models, GPUs, vector/inference APIs), not AI subscriptions;
+  problem, Mermaid diagram with Tiger Data at the centre, why each Tiger feature, 2-command
   setup, Assumptions, "How we used Tiger Data" with benchmark numbers, 3-minute demo script.
 - Tiger Cloud cutover: the user runs `tiger auth login`, then `tiger service create`, migrate, backfill,
   and point `DATABASE_URL` in `.env` at it.
-- Optional: live LLM mode test once `ANTHROPIC_API_KEY` is in `.env` (default model
-  `claude-opus-5-5`; `agents/runner.py` uses `messages.parse`).
 
 ## Design decisions to log in the README "Assumptions"
 

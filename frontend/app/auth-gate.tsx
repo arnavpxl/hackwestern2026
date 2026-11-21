@@ -45,7 +45,7 @@ function LoginForm({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-screen w-full items-center justify-center bg-slate-50 px-4">
       <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <div>
           <h1 className="text-lg font-bold text-ink">TokenTrueUp</h1>

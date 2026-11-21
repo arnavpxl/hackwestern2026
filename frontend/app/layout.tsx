@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import AuthGate from "./auth-gate";
 import Header from "./header";
+import Shell from "./shell";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const newsreader = Newsreader({ subsets: ["latin"], variable: "--font-newsreader", display: "swap" });
+const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap" });
 
 export const metadata: Metadata = {
   title: "TokenTrueUp",
@@ -10,11 +16,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={`${inter.variable} ${newsreader.variable} ${jetbrains.variable}`}>
+      <body className="min-[761px]:flex min-[761px]:min-h-screen">
         <AuthGate>
           <Header />
-          <main className="mx-auto max-w-7xl space-y-4 px-4 py-6">{children}</main>
+          <Shell>{children}</Shell>
         </AuthGate>
       </body>
     </html>

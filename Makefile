@@ -1,6 +1,7 @@
 # TokenTrueUp: two-command setup.
 #   make up    start TimescaleDB, build the venv, migrate, seed, backfill ROWS events (~2 min first time)
 #   make demo  run the API with the in-process live event generator on :8000
+#   make web   run the frontend on :3000 (second terminal)
 # Others: make flow (scripted end-to-end demo against a running API), bench, test, lint, reset, psql, down.
 #
 # The venv lives outside the repo (~/.cache/tokentrueup/venv; backend/.venv is a symlink) and we never
@@ -13,7 +14,7 @@ PY    := cd backend && PYTHONPATH=src .venv/bin
 DBSQL := docker compose exec -T tsdb psql -U postgres -d tokentrueup -v ON_ERROR_STOP=1 -Atc
 API   ?= http://localhost:8000
 
-.PHONY: up demo flow bench test lint reset psql down down-volumes venv db compress
+.PHONY: web up demo flow bench test lint reset psql down down-volumes venv db compress
 
 up: venv db
 	$(PY)/db-migrate
@@ -30,6 +31,9 @@ compress:
 
 demo:
 	$(PY)/uvicorn tokentrueup.api.main:app --port 8000
+
+web:
+	cd frontend && ([ -d node_modules ] || npm install --no-audit --no-fund) && npx next dev -p 3000
 
 flow:
 	$(PY)/python scripts/demo_flow.py --base $(API)

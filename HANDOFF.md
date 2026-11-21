@@ -11,7 +11,7 @@ The original product spec was the first message of the previous session; the pla
 - **DB:** TimescaleDB 2.32 / PG17 in Docker at `localhost:5433`. Migrations 0001–0013 applied. About 28.9M
   `usage_events` rows (20M backfill plus demo runs); raw 90.6% compressed, caggs 38–92%.
 - **Setup:** `make up` (DB, venv, migrate, and seed + backfill + `make compress` only if empty), then
-  `make demo` (API with the in-process generator on :8000). Also `make flow` (scripted end-to-end demo,
+  `make demo` (API with the in-process generator on :8000), `make web` (frontend on :3000). Also `make flow` (scripted end-to-end demo,
   `backend/scripts/demo_flow.py`), `make bench` (writes `BENCHMARKS.md`), `make test`, `make lint`,
   `make reset`.
 - **Live LLM mode is on locally:** `.env` has an `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL=claude-haiku-4-5`
@@ -55,6 +55,10 @@ The original product spec was the first message of the previous session; the pla
 
 ## Known rough edges
 
+- Once (not reproducible since): right after a reset, three keys got false anomaly cases with no
+  change point (`spike_started_at` NULL, window spend ~5-min fat events). Suspect stale usage_1m
+  buckets surviving a reset; watch for it. Close no longer crashes on those (falls back to opened_at).
+
 - `/api/recon/run` takes ~15 s in live mode: variance narrators still run one invoice at a time
   (`orchestrator/recon.py: reconcile`). Same fix as close (gather after the deterministic part).
 - The anomaly case's own `estimate_cents` stays NULL (its excess is folded into the usage case via
@@ -65,8 +69,11 @@ The original product spec was the first message of the previous session; the pla
 
 ## Then (next steps, in order)
 
-- Next.js + Tailwind + Recharts frontend, 7 pages. Use the `node_modules.nosync` + symlink trick only
-  if the repo ever goes back under iCloud.
+- Frontend basics are in `frontend/` (Next.js 15 + Tailwind 4 + Recharts + SWR, polling every 1–2 s, SSE toasts):
+  Live spend, Close, Case detail (SQL + re-run, reply box), Reconciliation (invoices, rules, replay table),
+  Under the hood (race, freshness probe, columnstore, caggs, jobs). Sim controls live in the header.
+  Still to do: a scripted `/sim/demo` button and polish. Headless screenshots need real waiting
+  (polling defeats `--virtual-time-budget`); a CDP helper that does this is easy to rebuild.
 - README: frame it as **AI usage spend** (models, GPUs, vector/inference APIs), not AI subscriptions;
   problem, Mermaid diagram with Tiger Data at the centre, why each Tiger feature, 2-command
   setup, Assumptions, "How we used Tiger Data" with benchmark numbers, 3-minute demo script.

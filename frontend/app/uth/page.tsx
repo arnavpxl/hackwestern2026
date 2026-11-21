@@ -1,0 +1,88 @@
+"use client";
+import { useState } from "react";
+import { post, useApi, when } from "@/lib/api";
+
+const mb = (b: number | null | undefined) => (b ? `${(b / 1e6).toLocaleString("en-US", { maximumFractionDigits: 1 })} MB` : "—");
+
+export default function UnderTheHood() {
+  const { data: s } = useApi("/api/uth/stats", 3000);
+  const [race, setRace] = useState<any>(null);
+  const [fresh, setFresh] = useState<any>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const go = async (k: string, fn: () => Promise<void>) => { setBusy(k); try { await fn(); } finally { setBusy(null); } };
+  if (!s) return <div className="card">Loading…</div>;
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Tile label="Usage events (hypertable)" value={Number(s.usage_rows).toLocaleString()} sub={`${s.chunks} daily chunks, ${s.compressed_chunks} in columnstore`} />
+        <Tile label="Live ingest" value={`${Math.round(s.ingest_eps ?? 0).toLocaleString()} ev/s`} sub={s.paused ? "generator paused" : "batched COPY every 200 ms"} />
+        {s.columnstore.filter((c: any) => c.name === "usage_events").map((c: any) => (
+          <Tile key="c" label="Columnstore, raw events" value={`${c.ratio_pct ?? "—"}% smaller`} sub={`${mb(c.before)} → ${mb(c.after)}`} />
+        ))}
+        <Tile label="Last anomaly detection" value={s.anomaly_latency[0] ? `${(s.anomaly_latency[0].detection_latency_ms / 1000).toFixed(1)} s` : "—"} sub="first spike event → case opened, in-DB job" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="card">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold">Query race: 30-day spend by team</h2>
+            <button className="btn-primary ml-auto" disabled={!!busy} onClick={() => go("race", async () => setRace(await post("/api/uth/race")))}>{busy === "race" ? "Racing…" : "Race"}</button>
+          </div>
+          {race ? (
+            <div className="mt-3 space-y-2 text-sm">
+              <Bar label="Raw hypertable" ms={race.raw.ms} max={race.raw.ms} color="bg-slate-400" />
+              <Bar label="usage_1d continuous aggregate" ms={race.cagg.ms} max={race.raw.ms} color="bg-indigo-600" />
+              <p><b>{race.speedup}× faster</b>, same totals: {race.totals_match ? "yes" : "no"} (raw scans {race.raw.plan.relations_touched} chunk relations)</p>
+            </div>
+          ) : <p className="mt-3 text-sm text-slate-500">Runs the same query on raw events and on the daily rollup, timed with EXPLAIN ANALYZE.</p>}
+        </div>
+        <div className="card">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold">Freshness probe</h2>
+            <button className="btn-primary ml-auto" disabled={!!busy} onClick={() => go("fresh", async () => setFresh(await post("/api/uth/freshness")))}>{busy === "fresh" ? "Probing…" : "Probe"}</button>
+          </div>
+          {fresh ? <p className="mt-3 text-sm">Inserted one event; visible in <code>usage_1m</code> after <b>{fresh.visible_after_ms} ms</b>. {fresh.via}.</p>
+            : <p className="mt-3 text-sm text-slate-500">Inserts an event and times how long until the per-minute rollup shows it.</p>}
+        </div>
+      </div>
+
+      <div className="card overflow-x-auto">
+        <h2 className="mb-2 font-semibold">Columnstore</h2>
+        <table className="tbl"><thead><tr><th>Table</th><th className="num">Before</th><th className="num">After</th><th className="num">Smaller</th><th className="num">Chunks compressed</th></tr></thead>
+          <tbody>{s.columnstore.map((c: any) => (
+            <tr key={c.name}><td className="font-mono text-xs">{c.name}</td><td className="num">{mb(c.before)}</td><td className="num">{mb(c.after)}</td>
+              <td className="num">{c.ratio_pct != null ? `${c.ratio_pct}%` : "—"}</td><td className="num">{c.number_compressed_chunks ?? 0}/{c.total_chunks ?? 0}</td></tr>
+          ))}</tbody></table>
+      </div>
+
+      <div className="card overflow-x-auto">
+        <h2 className="mb-2 font-semibold">Continuous aggregates</h2>
+        <table className="tbl"><thead><tr><th>View</th><th>Real-time</th><th>Watermark</th><th>Refresh every</th><th>Last refresh</th></tr></thead>
+          <tbody>{s.caggs.map((c: any) => (
+            <tr key={c.view_name}><td className="font-mono text-xs">{c.view_name}</td><td>{c.materialized_only ? "no" : "yes"}</td>
+              <td>{when(c.watermark)}</td><td>{c.every ?? "—"}</td><td>{when(c.last_refresh)}</td></tr>
+          ))}</tbody></table>
+      </div>
+
+      <div className="card overflow-x-auto">
+        <h2 className="mb-2 font-semibold">Background jobs</h2>
+        <table className="tbl"><thead><tr><th>Job</th><th>Target</th><th>Every</th><th>Status</th><th className="num">Runs</th><th className="num">Failures</th><th className="num">Last ms</th></tr></thead>
+          <tbody>{s.jobs.map((j: any) => (
+            <tr key={j.job_id}><td>{j.proc_name}</td><td className="font-mono text-xs">{j.target || "—"}</td><td>{j.every}</td><td>{j.last_run_status ?? "—"}</td>
+              <td className="num">{j.total_runs}</td><td className="num">{j.total_failures}</td><td className="num">{j.last_ms ?? "—"}</td></tr>
+          ))}</tbody></table>
+      </div>
+    </>
+  );
+}
+
+function Tile({ label, value, sub }: { label: string; value: string; sub: string }) {
+  return <div className="card"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+    <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div><div className="text-xs text-slate-500">{sub}</div></div>;
+}
+
+function Bar({ label, ms, max, color }: { label: string; ms: number; max: number; color: string }) {
+  return <div><div className="flex justify-between text-xs"><span>{label}</span><span className="tabular-nums">{ms} ms</span></div>
+    <div className="h-3 rounded bg-slate-100"><div className={`h-3 rounded ${color}`} style={{ width: `${Math.max(0.5, (ms / max) * 100)}%` }} /></div></div>;
+}

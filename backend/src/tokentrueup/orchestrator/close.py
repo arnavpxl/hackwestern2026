@@ -148,7 +148,7 @@ async def outreach_if_needed(conn: AsyncConnection, case: dict, est: Estimate) -
                       f"Hi {owner_name.split()[0]} — key {label} ({calc['model']}) is spending "
                       f"${calc['projected_hourly_cents'] / 100:,.2f}/h vs a baseline of "
                       f"${calc['baseline_mean_cents'] / 100:,.2f}/h since "
-                      f"{case['spike_started_at']:%H:%M} UTC. Is this expected, or a runaway job? "
+                      f"{(case['spike_started_at'] or case['opened_at']):%H:%M} UTC. Is this expected, or a runaway job? "
                       "If it's a bug, please stop it and tell us when.")
         return True
     if "orphan_key_excluded" in est.flags:

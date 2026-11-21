@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fixture-api",
+      "runtimeExecutable": "/Users/arnav/.local/node/bin/node",
+      "runtimeArgs": ["/private/tmp/claude-501/-Users-arnav-Documents-GitHub-hackwestern2026/c8d4032f-cb69-4d95-8c86-79f94086d670/scratchpad/mock/server.mjs"],
+      "port": 8765
+    },
+    {
+      "name": "web-fixture",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd frontend && PATH=/Users/arnav/.local/node/bin:$PATH NEXT_PUBLIC_API=http://localhost:8765 npx next dev -p 3123"],
+      "port": 3123
+    }
+  ]
+}

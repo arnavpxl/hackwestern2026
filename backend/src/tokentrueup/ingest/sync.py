@@ -18,7 +18,8 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
 from .. import vault
-from . import anthropic
+from . import anthropic, openai
+from .common import ProviderError
 
 if TYPE_CHECKING:
     from psycopg_pool import AsyncConnectionPool
@@ -31,7 +32,7 @@ SCHEDULE_EVERY = 300  # seconds between scheduler passes
 STALE_AFTER = timedelta(hours=1)  # a connection synced within this window is not due
 
 FetchFn = Callable[..., Awaitable[Any]]  # (key, start, end) -> async iterator of rows
-PROVIDERS: dict[str, Callable[..., Any]] = {"anthropic": anthropic.fetch_usage}
+PROVIDERS: dict[str, Callable[..., Any]] = {"anthropic": anthropic.fetch_usage, "openai": openai.fetch_usage}
 _locks: dict[int, asyncio.Lock] = {}
 
 UPSERT = """
@@ -92,7 +93,7 @@ async def _run(conn: AsyncConnection, cid: int, now: datetime, fetch: Callable[.
         await conn.execute("UPDATE connections SET last_sync_at = now(), last_error = NULL WHERE id = %s", (cid,))
         await conn.commit()
         return {"status": "ok", "rows": rows, "from": start.isoformat(), "through": end.isoformat()}
-    except (anthropic.ProviderError, ValueError, RuntimeError) as e:
+    except (ProviderError, ValueError, RuntimeError) as e:
         message = str(e)[:300]
         await conn.rollback()  # discard this run's partial rows
         await conn.execute("UPDATE sync_runs SET status = 'error', finished_at = now(), error = %s WHERE id = %s",

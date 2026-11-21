@@ -12,17 +12,43 @@ function pivot(rows: any[], key: string, fmt: (v: string) => string) {
     teams.add(r.team);
     by.set(k, { ...(by.get(k) ?? { t: k }), [r.team]: Number(r.dollars) });
   }
-  return { data: [...by.values()], teams: [...teams].sort() };
+  const sortedTeams = [...teams].sort();
+  const data = [...by.values()].map((point) => {
+    for (const team of sortedTeams) point[team] ??= 0;
+    return point;
+  });
+  return { data, teams: sortedTeams };
 }
 
 const hhmm = (ts: string) => new Date(ts).toISOString().slice(11, 16);
 const day = (d: string) => String(d).slice(5, 10);
 
+function minutePivot(rows: any[], teams: string[], simNow: string, minutes = 60) {
+  const end = new Date(simNow);
+  end.setUTCSeconds(0, 0);
+  const by = new Map<number, any>();
+
+  for (let i = minutes - 1; i >= 0; i--) {
+    const ts = end.getTime() - i * 60_000;
+    by.set(ts, Object.fromEntries([["t", hhmm(new Date(ts).toISOString())], ...teams.map((team) => [team, 0])]));
+  }
+
+  for (const row of rows ?? []) {
+    const bucket = new Date(row.bucket);
+    bucket.setUTCSeconds(0, 0);
+    const point = by.get(bucket.getTime());
+    if (point && teams.includes(row.team)) point[row.team] = Number(row.dollars);
+  }
+
+  return { data: [...by.values()], teams };
+}
+
 export default function LiveSpend() {
   const { data, error } = useApi("/api/spend/live?minutes=60");
   if (error) return <div className="card text-red-700">API unreachable: {String(error.message)}. Is `make demo` running?</div>;
   if (!data) return <div className="card">Loading…</div>;
-  const minute = pivot(data.series, "bucket", hhmm);
+  const teams = [...new Set<string>(data.keys.map((key: any) => key.team))].sort();
+  const minute = minutePivot(data.series, teams, data.sim_now);
   const daily = pivot(data.daily, "day", day);
   const mtd = data.keys.reduce((a: number, k: any) => a + Number(k.mtd_dollars), 0);
   const proj = data.keys.reduce((a: number, k: any) => a + Number(k.projected_month_end), 0);
@@ -46,7 +72,7 @@ export default function LiveSpend() {
             <Tooltip formatter={(v: number) => dollars(v)} />
             <Legend />
             {minute.teams.map((t, i) => (
-              <Area key={t} type="monotone" dataKey={t} stackId="1" stroke={COLORS[i % 5]} fill={COLORS[i % 5]} fillOpacity={0.35} isAnimationActive={false} />
+              <Area key={t} type="linear" dataKey={t} stackId="1" stroke={COLORS[i % 5]} fill={COLORS[i % 5]} fillOpacity={0.35} isAnimationActive={false} />
             ))}
           </AreaChart>
         </ResponsiveContainer>

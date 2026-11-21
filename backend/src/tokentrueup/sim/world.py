@@ -358,6 +358,47 @@ async def scenario_late_data(conn: AsyncConnection, key: str = "research-train-h
             "provider": KEYS[i].provider, "model": KEYS[i].models[0][0]}
 
 
+async def start_demo(conn: AsyncConnection) -> dict[str, Any]:
+    """Reset to the canonical demo state and start its three-stage story.
+
+    The runaway is visible immediately. The unannounced price change stays hidden until
+    invoices arrive, giving reconciliation a meaningful discrepancy to diagnose later.
+    """
+    state = await reset_world(conn)
+    scenario = {
+        "runaway": {
+            "key": RUNAWAY_KEY,
+            "mult": 80,
+            "active": True,
+            "since": state["sim_now"].isoformat(),
+        },
+        "stealth_price": {
+            "provider": "nimbus-llm",
+            "model": "nimbus-pro",
+            "component": "output_tokens",
+            "rate": 1800,
+            "from": (state["sim_now"] - timedelta(days=6)).isoformat(),
+        },
+    }
+    await conn.execute(
+        """UPDATE sim_state
+           SET paused = false, target_eps = 4000, scenario = %s, updated_at = now()
+           WHERE id = 1""",
+        (Jsonb(scenario),),
+    )
+    await conn.commit()
+    return {
+        "state": await get_state(conn),
+        "configuration": {
+            "name": "AI spend control loop",
+            "hero_key": RUNAWAY_KEY,
+            "runaway_multiplier": 80,
+            "expected_detection_seconds": "5–15",
+            "reconciliation_provider": "nimbus-llm",
+        },
+    }
+
+
 async def late_data_check(conn: AsyncConnection, hour: datetime, key: str = "research-train-h100") -> dict:
     """Raw vs materialized-only cagg for the late hour: proves refresh absorbed it."""
     async with conn.cursor(row_factory=dict_row) as cur:

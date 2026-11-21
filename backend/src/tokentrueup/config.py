@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://postgres:tokentrueup@localhost:5433/tokentrueup"
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-5-5"
+    anthropic_model: str = "claude-opus-5-5"
     backfill_rows: int = 20_000_000
     backfill_days: int = 95
 

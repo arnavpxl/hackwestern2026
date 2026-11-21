@@ -23,7 +23,7 @@ SELECT model, rate_effective_from,
        sum(gpu_seconds) / 3600.0 AS gpu_hours,
        max(input_rate) AS input_rate, max(output_rate) AS output_rate, max(cached_rate) AS cached_rate,
        max(request_rate) AS request_rate, max(gpu_rate) AS gpu_rate,
-       sum(cached_cost_cents) AS cached_list_cents
+       sum(cached_cost_cents) AS cached_list_cents, min(bucket) AS service_from
 FROM usage_1h_cost
 WHERE provider = %(provider)s AND bucket >= %(start)s AND bucket < %(end)s
 GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
@@ -51,7 +51,6 @@ async def build_invoice(
     stealth = stealth if stealth and stealth.get("provider") == provider else None
     stealth_from = datetime.fromisoformat(stealth["from"]) if stealth else end + timedelta(days=3650)
     lines: list[dict[str, Any]] = []
-    gross = 0.0
     cached_list = 0.0
     stealth_delta = 0.0
     async with conn.cursor(row_factory=dict_row) as cur:
@@ -72,13 +71,10 @@ async def build_invoice(
                 stealth_delta += qty / per * (new_rate - rate)
                 rate = new_rate
             amount = qty / per * rate
-            if qty_col != "gpu_hours":
-                gross += amount
-            else:
-                gross += qty / (1 + p.uplift_pct / 100) / per * float(r[rate_col])
             lines.append({
                 "kind": "usage", "model": r["model"], "component": qty_col,
                 "rate_effective_from": r["rate_effective_from"].isoformat(),
+                "service_from": r["service_from"].isoformat(),
                 "quantity": round(qty / per, 4), "unit": unit, "unit_rate_cents": rate,
                 "amount_cents": round(amount),
             })

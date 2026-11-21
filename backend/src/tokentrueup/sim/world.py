@@ -142,6 +142,7 @@ class LiveGenerator:
         last_t = None
         window_count, window_start = 0, time.monotonic()
         last_refresh = 0.0
+        last_future_refresh = 0.0
         while self.running:
             loop_start = time.monotonic()
             try:
@@ -156,7 +157,9 @@ class LiveGenerator:
                     if state["paused"]:
                         last_t = None
                     else:
-                        t0 = last_t or sim_now - self.tick
+                        # never back-fill a big gap (e.g. right after fast-forward): fast_forward
+                        # synthesizes skipped time itself; the live stream only covers ~1 tick
+                        t0 = max(last_t or 0.0, sim_now - 2 * self.tick)
                         batches = live_window(t0, sim_now, state["target_eps"], ids, origin, tables, rng,
                                               multipliers(state["scenario"]))
                         n = await copy_batches(conn, batches)
@@ -164,6 +167,9 @@ class LiveGenerator:
                         last_t = sim_now
                         window_count += n
                         self.events_total += n
+                    if state["sim_offset"].total_seconds() > 60 and loop_start - last_future_refresh > 10:
+                        await refresh_ahead(conn, datetime.fromtimestamp(sim_now, UTC))
+                        last_future_refresh = loop_start
                     el = time.monotonic() - window_start
                     if el >= 1.0:
                         await conn.execute(
@@ -180,8 +186,25 @@ class LiveGenerator:
             await asyncio.sleep(max(0.0, self.tick - (time.monotonic() - loop_start)))
 
 
+async def refresh_ahead(conn: AsyncConnection, sim_now: datetime, start: datetime | None = None) -> None:
+    """When the sim clock runs ahead of real time, refresh policies (relative to real now())
+    never reach the simulated data; materialize it explicitly, bottom-up."""
+    start = start or sim_now - timedelta(hours=2)
+    await conn.commit()
+    await conn.set_autocommit(True)
+    try:
+        for view, end in (("usage_1m", sim_now - timedelta(minutes=1)),
+                          ("usage_1h", sim_now.replace(minute=0, second=0, microsecond=0)),
+                          ("usage_1d", sim_now.replace(hour=0, minute=0, second=0, microsecond=0))):
+            if end > start:
+                await conn.execute("CALL refresh_continuous_aggregate(%s, %s, %s)", (view, start, end))
+    finally:
+        await conn.set_autocommit(False)
+
+
 async def fast_forward(conn: AsyncConnection, to: datetime) -> dict[str, Any]:
-    """Synthesize [sim_now, to) at 1-minute density per key (no runaway), then move the clock."""
+    """Synthesize [sim_now, to) at 5-minute density per key (no runaway), move the clock,
+    then materialize the skipped range in the cagg hierarchy."""
     state = await get_state(conn)
     start = state["sim_now"]
     if to <= start:
@@ -191,13 +214,13 @@ async def fast_forward(conn: AsyncConnection, to: datetime) -> dict[str, Any]:
     origin = backfill_start(state["real_now"]).timestamp()
     rng = np.random.default_rng(int(to.timestamp()))
     t0, t1 = start.timestamp(), to.timestamp()
-    minutes = np.arange(np.ceil(t0 / 60) * 60, t1, 60.0)
+    minutes = np.arange(np.ceil(t0 / 300) * 300, t1, 300.0)
     t = time.perf_counter()
     rows = 0
     batches = []
     for i, spec in enumerate(KEYS):
-        units = lognormal_split(units_per_hour(spec, minutes, origin) / 60, rng, sigma=0.2)
-        batches.append(build_events(i, ids[i], minutes + rng.uniform(0, 59, len(minutes)), units, tables, rng))
+        units = lognormal_split(units_per_hour(spec, minutes, origin) / 12, rng, sigma=0.2)
+        batches.append(build_events(i, ids[i], minutes + rng.uniform(0, 299, len(minutes)), units, tables, rng))
     rows = await copy_batches(conn, batches)
     scenario = dict(state["scenario"])
     if scenario.get("runaway"):
@@ -207,9 +230,12 @@ async def fast_forward(conn: AsyncConnection, to: datetime) -> dict[str, Any]:
         (to, Jsonb(scenario)),
     )
     await conn.commit()
+    t_ref = time.perf_counter()
+    await refresh_ahead(conn, to, start=start.replace(minute=0, second=0, microsecond=0))
+    refresh_s = time.perf_counter() - t_ref
     state = await get_state(conn)
     delivered = await deliver_due_invoices(conn, state)
-    return {"rows": rows, "seconds": round(time.perf_counter() - t, 2), "from": start.isoformat(),
+    return {"rows": rows, "refresh_seconds": round(refresh_s, 2), "seconds": round(time.perf_counter() - t, 2), "from": start.isoformat(),
             "sim_now": state["sim_now"].isoformat(), "invoices_delivered": delivered}
 
 

@@ -19,6 +19,7 @@ db-migrate = "tokentrueup.migrate:main"
 ttu-seed = "tokentrueup.sim.seed:main"
 ttu-backfill = "tokentrueup.sim.backfill:main"
 ttu-generator = "tokentrueup.sim.generator:main"
+ttu-api = "tokentrueup.api.main:main"
 ttu-bench = "tokentrueup.bench.run_benchmarks:main"
 
 [dependency-groups]
@@ -44,4 +45,4 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]

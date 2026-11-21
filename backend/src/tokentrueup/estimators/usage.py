@@ -49,11 +49,15 @@ mtd AS (
 trail AS (  -- trailing 7-day mean hourly net spend drives the projection
   SELECT c.api_key_id, c.model,
          sum((c.cost_cents - c.cached_cost_cents * %(cached_discount_pct)s / 100.0)
-             * CASE WHEN k.is_batch THEN 1 - %(batch_discount_pct)s / 100.0 ELSE 1 END) / 168.0 AS hourly_cents
+             * CASE WHEN k.is_batch THEN 1 - %(batch_discount_pct)s / 100.0 ELSE 1 END)
+           / NULLIF(count(DISTINCT c.bucket), 0) AS hourly_cents
   FROM usage_1h_cost c JOIN api_keys k ON k.id = c.api_key_id
   WHERE c.provider = %(provider)s
     AND c.bucket >= %(as_of)s::timestamptz - interval '7 days' AND c.bucket < %(as_of)s::timestamptz
     AND (%(include_orphans)s OR k.owner_id IS NOT NULL)
+    AND NOT EXISTS (  -- owner-confirmed runaway windows don't drive the projection
+      SELECT 1 FROM jsonb_to_recordset(%(exclude_windows)s::jsonb) w(api_key_id int, start_ts timestamptz, end_ts timestamptz)
+      WHERE w.api_key_id = c.api_key_id AND c.bucket >= date_trunc('hour', w.start_ts) AND c.bucket < w.end_ts)
   GROUP BY 1, 2
 ),
 remaining AS (
@@ -92,6 +96,7 @@ class UsageParams:
     cached_discount_pct: float = 0
     uplift_pct: float = 0
     include_orphans: bool = False
+    exclude_windows: list[dict] = field(default_factory=list)  # [{api_key_id, start_ts, end_ts}]
     applied_rules: list[int] = field(default_factory=list)
 
 
@@ -117,6 +122,9 @@ async def estimate_usage(
     as_of: datetime,
     params: UsageParams,
 ) -> Estimate:
+    # Whole hours only: the in-progress hour keeps changing while data streams in, so the
+    # stored SQL + params would not reproduce. Complete hours are immutable (modulo late data).
+    as_of = as_of.replace(minute=0, second=0, microsecond=0)
     p: dict[str, Any] = {
         "provider": provider,
         "period_start": period_start,
@@ -127,9 +135,11 @@ async def estimate_usage(
         "cached_discount_pct": params.cached_discount_pct,
         "uplift_pct": params.uplift_pct,
         "include_orphans": params.include_orphans,
+        "exclude_windows": Jsonb(params.exclude_windows),
     }
     q = await run_query(conn, USAGE_SQL, p)
     q.params["tiers"] = params.tiers
+    q.params["exclude_windows"] = params.exclude_windows
     q.params["applied_rules"] = params.applied_rules
     total = sum(r["line_total_cents"] for r in q.rows)
     mtd = sum(r["mtd_cents"] for r in q.rows)

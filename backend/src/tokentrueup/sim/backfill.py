@@ -8,6 +8,7 @@ the Tiger Cloud free tier). Afterwards refresh the cagg hierarchy bottom-up.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -135,7 +136,17 @@ def run(rows: int, workers: int = 4, now: datetime | None = None) -> dict:
     load_s = time.perf_counter() - t
     with psycopg.connect(settings.database_url) as conn:
         refresh = refresh_all(conn, start, now)
+    invoices = asyncio.run(_history(now))
+    print(f"  generated {invoices} historical AP invoices")
     return {"rows": total, "load_seconds": load_s, "rows_per_sec": total / load_s, "refresh_seconds": refresh}
+
+
+async def _history(now: datetime) -> int:
+    from .invoices import generate_history
+
+    async with await psycopg.AsyncConnection.connect(settings.database_url) as conn:
+        await conn.execute("DELETE FROM ap_invoices")
+        return await generate_history(conn, now)
 
 
 def main() -> None:

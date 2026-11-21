@@ -1,3 +1,5 @@
+# Pinned project name: keeps the same Docker volume (hackwestern2026_tsdb) whatever the folder is called.
+name: hackwestern2026
 services:
   tsdb:
     image: timescale/timescaledb-ha:pg17

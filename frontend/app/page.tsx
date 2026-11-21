@@ -1,5 +1,5 @@
 "use client";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { dollars, useApi } from "@/lib/api";
 
 const COLORS = ["#4f46e5", "#0891b2", "#d97706", "#db2777", "#16a34a"];
@@ -30,7 +30,9 @@ function minutePivot(rows: any[], teams: string[], simNow: string, minutes = 60)
 
   for (let i = minutes - 1; i >= 0; i--) {
     const ts = end.getTime() - i * 60_000;
-    by.set(ts, Object.fromEntries([["t", hhmm(new Date(ts).toISOString())], ...teams.map((team) => [team, 0])]));
+    // A missing aggregate bucket means ingestion stopped. Keep it null so Recharts
+    // breaks the area instead of drawing a misleading fall to $0 and back.
+    by.set(ts, Object.fromEntries([["t", hhmm(new Date(ts).toISOString())], ...teams.map((team) => [team, null])]));
   }
 
   for (const row of rows ?? []) {
@@ -53,6 +55,7 @@ export default function LiveSpend() {
   const mtd = data.keys.reduce((a: number, k: any) => a + Number(k.mtd_dollars), 0);
   const proj = data.keys.reduce((a: number, k: any) => a + Number(k.projected_month_end), 0);
   const burn = data.keys.reduce((a: number, k: any) => a + Number(k.run_rate_hourly), 0);
+  const pauses = data.pauses ?? [];
 
   return (
     <>
@@ -63,7 +66,10 @@ export default function LiveSpend() {
       </div>
 
       <div className="card">
-        <h2 className="mb-2 font-semibold">Spend per minute, last hour (usage_1m, real-time aggregate)</h2>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">Spend per minute, last hour (usage_1m, real-time aggregate)</h2>
+          {data.paused && <span className="pill bg-amber-100 text-amber-800">Paused · simulation clock frozen</span>}
+        </div>
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={minute.data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -71,8 +77,14 @@ export default function LiveSpend() {
             <YAxis fontSize={11} tickFormatter={(v) => `$${v}`} />
             <Tooltip formatter={(v: number) => dollars(v)} />
             <Legend />
+            {pauses.map((p: any, i: number) => {
+              const seconds = Number(p.duration_seconds);
+              const duration = seconds < 60 ? `${Math.max(1, Math.round(seconds))}s` : `${Math.round(seconds / 60)}m`;
+              return <ReferenceLine key={`${p.sim_at}-${i}`} x={hhmm(p.sim_at)} stroke="#d97706" strokeDasharray="4 4"
+                label={{ value: p.real_ended_at ? `Paused ${duration}` : "Paused", position: "insideTopRight", fill: "#92400e", fontSize: 11 }} />;
+            })}
             {minute.teams.map((t, i) => (
-              <Area key={t} type="linear" dataKey={t} stackId="1" stroke={COLORS[i % 5]} fill={COLORS[i % 5]} fillOpacity={0.35} isAnimationActive={false} />
+              <Area key={t} type="linear" dataKey={t} stackId="1" connectNulls={false} stroke={COLORS[i % 5]} fill={COLORS[i % 5]} fillOpacity={0.35} isAnimationActive={false} />
             ))}
           </AreaChart>
         </ResponsiveContainer>

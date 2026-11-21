@@ -334,6 +334,12 @@ async def spend_live(minutes: int = 60):
             FROM usage_1m u JOIN api_keys k ON k.id = u.api_key_id JOIN teams t ON t.id = k.team_id
             WHERE u.bucket > sim_now() - make_interval(mins => %s) AND u.bucket <= sim_now()
             GROUP BY 1, 2 ORDER BY 1""", (minutes,))
+        pauses = await rows(conn, """
+            SELECT sim_at, real_started_at, real_ended_at,
+                   extract(epoch FROM (coalesce(real_ended_at, now()) - real_started_at)) AS duration_seconds
+            FROM sim_pause_intervals
+            WHERE sim_at > sim_now() - make_interval(mins => %s) AND sim_at <= sim_now()
+            ORDER BY sim_at""", (minutes,))
         daily = await rows(conn, """
             SELECT c.bucket::date AS day, t.name AS team, round(sum(c.cost_cents) / 100, 2) AS dollars
             FROM usage_1d_cost c JOIN api_keys k ON k.id = c.api_key_id JOIN teams t ON t.id = k.team_id
@@ -358,7 +364,8 @@ async def spend_live(minutes: int = 60):
             FROM api_keys k JOIN teams t ON t.id = k.team_id LEFT JOIN owners o ON o.id = k.owner_id
             LEFT JOIN mtd m ON m.api_key_id = k.id LEFT JOIN rate r ON r.api_key_id = k.id
             LEFT JOIN last5 l ON l.api_key_id = k.id ORDER BY mtd_dollars DESC""", {"p": period, "e": end})
-        return ok({"series": series, "daily": daily, "keys": keys, "sim_now": s["sim_now"],
+        return ok({"series": series, "pauses": pauses, "daily": daily, "keys": keys, "sim_now": s["sim_now"],
+                   "paused": s["paused"],
                    "period": s["close_period"], "period_end": end})
 
 
@@ -522,8 +529,7 @@ async def demo_start():
 async def sim_action(action: str):
     async with pool.connection() as conn:
         if action in ("play", "pause"):
-            await conn.execute("UPDATE sim_state SET paused = %s", (action == "pause",))
-            await conn.commit()
+            return ok(await world.set_paused(conn, action == "pause"))
         elif action == "reset":
             return ok(await world.reset_world(conn))
         else:

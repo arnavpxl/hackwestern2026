@@ -1,6 +1,7 @@
 """Simulator world: sim clock, live event stream, fast-forward, scenarios, invoice delivery.
 
-Time model: sim_now() = now() + sim_offset. Live events are written at sim_now so they
+Time model: sim_now() = clock_time + sim_offset, where clock_time is real now while
+playing and the captured pause timestamp while paused. Live events are written at sim_now so they
 always land above the cagg watermark (real-time aggregation shows them instantly).
 Fast-forward synthesizes the skipped interval at 1-minute density and bumps the offset.
 """
@@ -35,6 +36,40 @@ async def get_state(conn: AsyncConnection) -> dict[str, Any]:
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute("SELECT *, sim_now() AS sim_now, now() AS real_now FROM sim_state WHERE id = 1")
         return await cur.fetchone()
+
+
+async def set_paused(conn: AsyncConnection, paused: bool) -> dict[str, Any]:
+    """Pause/resume ingestion and the simulated clock as one atomic state change."""
+    async with conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            "SELECT *, sim_now() AS sim_now FROM sim_state WHERE id = 1 FOR UPDATE"
+        )
+        state = await cur.fetchone()
+    if state["paused"] == paused:
+        return await get_state(conn)
+
+    if paused:
+        await conn.execute(
+            "UPDATE sim_state SET paused = true, paused_at = now(), ingest_eps = 0, updated_at = now() WHERE id = 1"
+        )
+        await conn.execute(
+            "INSERT INTO sim_pause_intervals (sim_at) VALUES (%s)",
+            (state["sim_now"],),
+        )
+    else:
+        # Remove the elapsed wall-clock pause from the offset. This makes
+        # now() + the new offset equal the frozen sim_now at the instant of resume.
+        await conn.execute(
+            """UPDATE sim_state
+               SET sim_offset = sim_offset - (now() - paused_at),
+                   paused = false, paused_at = NULL, updated_at = now()
+               WHERE id = 1"""
+        )
+        await conn.execute(
+            "UPDATE sim_pause_intervals SET real_ended_at = now() WHERE real_ended_at IS NULL"
+        )
+    await conn.commit()
+    return await get_state(conn)
 
 
 async def load_rate_tables(conn: AsyncConnection) -> dict:
@@ -155,10 +190,11 @@ class LiveGenerator:
                         tables = await load_rate_tables(conn)
                         last_refresh = loop_start
                         await deliver_due_invoices(conn, state)
-                    sim_now = (state["real_now"] + state["sim_offset"]).timestamp() + (
-                        time.time() - state["real_now"].timestamp())
+                    sim_now = state["sim_now"].timestamp()
                     if state["paused"]:
-                        last_t = None
+                        # The clock is frozen too, so retain its exact position and
+                        # resume after it without replaying an overlapping tick.
+                        last_t = sim_now
                     else:
                         # never back-fill a big gap (e.g. right after fast-forward): fast_forward
                         # synthesizes skipped time itself; the live stream only covers ~1 tick
@@ -239,7 +275,10 @@ async def fast_forward(conn: AsyncConnection, to: datetime) -> dict[str, Any]:
     if scenario.get("runaway"):
         scenario["runaway"]["active"] = False
     await conn.execute(
-        "UPDATE sim_state SET sim_offset = %s::timestamptz - now(), scenario = %s WHERE id = 1",
+        """UPDATE sim_state
+           SET sim_offset = %s::timestamptz - CASE WHEN paused THEN paused_at ELSE now() END,
+               scenario = %s
+           WHERE id = 1""",
         (to, Jsonb(scenario)),
     )
     await conn.commit()
@@ -381,12 +420,11 @@ async def start_demo(conn: AsyncConnection) -> dict[str, Any]:
         },
     }
     await conn.execute(
-        """UPDATE sim_state
-           SET paused = false, target_eps = 4000, scenario = %s, updated_at = now()
-           WHERE id = 1""",
+        "UPDATE sim_state SET target_eps = 4000, scenario = %s, updated_at = now() WHERE id = 1",
         (Jsonb(scenario),),
     )
     await conn.commit()
+    await set_paused(conn, False)
     return {
         "state": await get_state(conn),
         "configuration": {
@@ -423,7 +461,12 @@ async def late_data_check(conn: AsyncConnection, hour: datetime, key: str = "res
 async def reset_world(conn: AsyncConnection) -> dict:
     """Drop fast-forwarded future data, clear close-period workflow state, rewind clock."""
     state = await get_state(conn)
-    await conn.execute("UPDATE sim_state SET sim_offset = '0', paused = true, scenario = '{}' WHERE id = 1")
+    await conn.execute(
+        """UPDATE sim_state
+           SET sim_offset = '0', paused = true, paused_at = now(), scenario = '{}', ingest_eps = 0
+           WHERE id = 1"""
+    )
+    await conn.execute("DELETE FROM sim_pause_intervals")
     await conn.commit()
     await asyncio.sleep(1.0)  # let an in-flight generator tick (old offset) finish before deleting
     # also the last 10 real minutes: a previous run's runaway must not trip the detector again

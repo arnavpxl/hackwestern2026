@@ -15,7 +15,8 @@ TRUNCATE audit_log, outreach_messages, evidence, learned_rules, obligation_cases
          RESTART IDENTITY CASCADE;
 TRUNCATE usage_events, price_changes, accrual_snapshots;
 TRUNCATE usage_1m, usage_1h, usage_1d, spend_baseline;
-UPDATE sim_state SET sim_offset = '0', paused = true, scenario = '{}', ingest_eps = 0;
+TRUNCATE sim_pause_intervals RESTART IDENTITY;
+UPDATE sim_state SET sim_offset = '0', paused = true, paused_at = now(), scenario = '{}', ingest_eps = 0;
 """
 
 

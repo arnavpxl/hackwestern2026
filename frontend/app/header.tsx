@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { API, post, useApi, when } from "@/lib/api";
+import { API, get, post, usd, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "./auth-gate";
 
 const NAV = [
@@ -14,6 +14,14 @@ const NAV = [
 ];
 
 type DemoState = { phase: "detecting" | "investigate"; caseId?: number } | null;
+type RunawayAlert = {
+  caseId: number;
+  apiKeyId?: number;
+  keyLabel?: string;
+  model?: string;
+  projectedHourlyCents?: number;
+  baselineHourlyCents?: number;
+};
 
 export default function Header() {
   const path = usePathname();
@@ -22,6 +30,7 @@ export default function Header() {
   const me = useMe();
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [runawayAlert, setRunawayAlert] = useState<RunawayAlert | null>(null);
   const [demoOpen, setDemoOpen] = useState(false);
   const [demo, setDemo] = useState<DemoState>(null);
   const [navOpen, setNavOpen] = useState(false);
@@ -48,7 +57,19 @@ export default function Header() {
       try {
         const d = JSON.parse((e as MessageEvent).data);
         if (d.event === "anomaly_opened") {
-          setToast(`Anomaly detected: case #${d.case_id}`);
+          const initial = { caseId: Number(d.case_id), apiKeyId: Number(d.api_key_id) };
+          setRunawayAlert(initial);
+          get(`/api/cases/${d.case_id}`).then((payload) => {
+            const c = payload.case;
+            const calc = c?.calc?.estimate ?? c?.calc ?? {};
+            setRunawayAlert((current) => current?.caseId === initial.caseId ? {
+              ...current,
+              keyLabel: c?.key_label,
+              model: calc.model,
+              projectedHourlyCents: Number(calc.projected_hourly_cents),
+              baselineHourlyCents: Number(calc.baseline_mean_cents),
+            } : current);
+          }).catch(() => {});
           if (localStorage.getItem("ttu-demo")) saveDemo({ phase: "investigate", caseId: d.case_id });
         }
         if (d.event === "invoices_received") setToast("Provider invoices received");
@@ -76,6 +97,7 @@ export default function Header() {
 
   const startDemo = async () => {
     setBusy("starting demo");
+    setRunawayAlert(null);
     try {
       await post("/api/demo/start");
       saveDemo({ phase: "detecting" });
@@ -196,6 +218,7 @@ export default function Header() {
       {toast && (
         <div role="status" className="fixed right-4 bottom-4 z-40 rounded-lg bg-ink px-4 py-2 text-sm text-white shadow-lg">{toast}</div>
       )}
+      {runawayAlert && <RunawaySpendAlert alert={runawayAlert} dismiss={() => setRunawayAlert(null)} />}
       {demoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" role="dialog" aria-modal="true" aria-labelledby="demo-title" onMouseDown={(e) => e.target === e.currentTarget && setDemoOpen(false)}>
           <div className="w-full max-w-2xl rounded-xl bg-surface p-6 shadow-2xl">
@@ -224,5 +247,66 @@ export default function Header() {
         </div>
       )}
     </aside>
+  );
+}
+
+function RunawaySpendAlert({ alert, dismiss }: { alert: RunawayAlert; dismiss: () => void }) {
+  const projected = Number.isFinite(alert.projectedHourlyCents) ? alert.projectedHourlyCents : undefined;
+  const baseline = Number.isFinite(alert.baselineHourlyCents) ? alert.baselineHourlyCents : undefined;
+  const multiple = projected != null && baseline != null && baseline > 0 ? Math.round(projected / baseline) : null;
+
+  return (
+    <div className="fixed inset-x-4 top-4 z-[70] ml-auto max-w-[460px] overflow-hidden rounded-xl border border-red-300 bg-white shadow-[0_24px_80px_rgba(127,29,29,0.32)]"
+      role="alert" aria-live="assertive" aria-labelledby="runaway-alert-title" aria-describedby="runaway-alert-description">
+      <div className="h-1.5 bg-red-600" />
+      <div className="p-5">
+        <div className="flex items-start gap-3.5">
+          <div className="relative mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+            <span className="absolute inset-0 animate-ping rounded-full bg-red-400 opacity-20" aria-hidden />
+            <svg aria-hidden viewBox="0 0 24 24" className="relative size-6" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M12 8v5" strokeLinecap="round" /><path d="M12 17h.01" strokeLinecap="round" />
+              <path d="M10.3 3.8 2.5 17.2A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.8L13.7 3.8a2 2 0 0 0-3.4 0Z" />
+            </svg>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[11px] font-bold tracking-[0.14em] text-red-700 uppercase">Automated spend alert</div>
+            <h2 id="runaway-alert-title" className="mt-1 font-serif text-[26px] leading-tight text-ink">Runaway AI spend detected</h2>
+            <p id="runaway-alert-description" className="mt-2 text-sm leading-relaxed text-ink-2">
+              {alert.keyLabel ? <><span className="font-mono font-semibold text-ink">{alert.keyLabel}</span>{alert.model ? <> on {alert.model}</> : null} crossed its expected spend threshold.</> : "A key crossed its expected hourly spend threshold."}
+            </p>
+          </div>
+          <button type="button" onClick={dismiss} aria-label="Dismiss runaway spend alert"
+            className="tu-focus -mt-1 rounded p-1 text-2xl leading-none text-ink-3 hover:text-ink">×</button>
+        </div>
+
+        {projected != null && baseline != null && (
+          <div className="mt-4 grid grid-cols-3 divide-x divide-red-200 rounded-lg border border-red-200 bg-red-50 py-3">
+            <AlertMetric label="Current pace" value={`${usd(projected)}/h`} />
+            <AlertMetric label="Normal baseline" value={`${usd(baseline)}/h`} />
+            <AlertMetric label="Increase" value={multiple == null ? "—" : `${multiple}×`} danger />
+          </div>
+        )}
+
+        <p className="mt-3 text-xs leading-relaxed text-ink-3">
+          TokenTrueUp detected this automatically and opened case #{alert.caseId} with reproducible evidence.
+        </p>
+        <div className="mt-4 flex items-center gap-2">
+          <Link href={`/cases/${alert.caseId}`} onClick={dismiss}
+            className="tu-focus inline-flex flex-1 items-center justify-center rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800">
+            Investigate case #{alert.caseId} <span aria-hidden>→</span>
+          </Link>
+          <button type="button" onClick={dismiss} className="tu-btn-secondary px-4 py-2.5">Dismiss</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AlertMetric({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
+  return (
+    <div className="min-w-0 px-3 text-center">
+      <div className="text-[10px] font-semibold tracking-wide text-ink-3 uppercase">{label}</div>
+      <div className={`mt-1 truncate text-sm font-bold tabular-nums ${danger ? "text-red-700" : "text-ink"}`}>{value}</div>
+    </div>
   );
 }

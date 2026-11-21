@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import AuthGate from "./auth-gate";
-import Header from "./header";
-import Shell from "./shell";
+import AppFrame from "./app-frame";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -19,8 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${newsreader.variable} ${jetbrains.variable}`}>
       <body className="min-[761px]:flex min-[761px]:min-h-screen">
         <AuthGate>
-          <Header />
-          <Shell>{children}</Shell>
+          <AppFrame>{children}</AppFrame>
         </AuthGate>
       </body>
     </html>

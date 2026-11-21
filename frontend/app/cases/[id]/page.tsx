@@ -17,6 +17,7 @@ import Pill from "@/components/trueup/Pill";
 import StatusIcon from "@/components/trueup/StatusIcon";
 import Stepper from "@/components/trueup/Stepper";
 import Tabs, { TabPanel } from "@/components/trueup/Tabs";
+import { useAppRoot } from "@/lib/routes";
 
 type TabKey = "verification" | "activity" | "workpaper" | "correspondence";
 type Filter = "all" | Source;
@@ -28,6 +29,7 @@ const MAIN = "@container min-w-0 flex-1 space-y-6 px-8 pt-6 pb-10 max-[760px]:px
 const RAIL = "grid w-full shrink-0 content-start gap-x-8 gap-y-5 border-t border-line bg-surface px-[22px] py-6 max-[760px]:px-4 min-[761px]:max-[1279px]:grid-cols-2 min-[761px]:max-[1279px]:px-8 min-[1280px]:flex min-[1280px]:w-[340px] min-[1280px]:flex-col min-[1280px]:gap-3 min-[1280px]:border-t-0 min-[1280px]:border-l";
 
 export default function CaseDetail({ params }: { params: Promise<{ id: string }> }) {
+  const root = useAppRoot();
   const { id } = use(params);
   const { data, error, mutate } = useApi<CasePayload>(`/api/cases/${id}`);
   const { data: recon, mutate: mutateRecon } = useApi("/api/recon", 5000);
@@ -77,7 +79,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
         <header className="space-y-2.5">
           <nav aria-label="Breadcrumb">
             <ol className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium tracking-[0.12em] text-ink-3 uppercase">
-              <li><Link href="/close" className="tu-focus rounded hover:text-ink">Close</Link></li>
+              <li><Link href={`${root}/close`} className="tu-focus rounded hover:text-ink">Close</Link></li>
               <li aria-hidden>/</li>
               <li>{TYPE_LABEL[c.type] ?? c.type}</li>
               <li aria-hidden>/</li>
@@ -310,7 +312,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
         </div>
         </div>
         <div className="hidden flex-1 min-[1280px]:block" />
-        <Link href="/close" className="tu-btn-secondary w-full min-[761px]:max-[1279px]:col-span-2 min-[761px]:max-[1279px]:w-auto min-[761px]:max-[1279px]:justify-self-start">← Back to close</Link>
+        <Link href={`${root}/close`} className="tu-btn-secondary w-full min-[761px]:max-[1279px]:col-span-2 min-[761px]:max-[1279px]:w-auto min-[761px]:max-[1279px]:justify-self-start">← Back to close</Link>
       </aside>
     </div>
   );

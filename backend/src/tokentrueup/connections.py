@@ -27,12 +27,14 @@ async def audit(conn: AsyncConnection, actor: str, action: str, detail: dict[str
                        (actor, action, Jsonb(detail)))
 
 
-async def list_connections(conn: AsyncConnection) -> dict[str, Any]:
+async def list_connections(conn: AsyncConnection, created_by: int | None = None) -> dict[str, Any]:
     """Everything the Connections page needs. No key material is selected."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(f"""SELECT {LIST_COLUMNS} FROM connections c
                               JOIN providers p ON p.id = c.provider_id JOIN teams t ON t.id = c.team_id
-                              LEFT JOIN users u ON u.id = c.created_by ORDER BY c.id""")
+                              LEFT JOIN users u ON u.id = c.created_by
+                              WHERE (%s::bigint IS NULL OR c.created_by = %s) ORDER BY c.id""",
+                          (created_by, created_by))
         connections = await cur.fetchall()
         await cur.execute("SELECT id, name FROM providers WHERE id IN ('anthropic', 'openai') ORDER BY name")
         providers = await cur.fetchall()

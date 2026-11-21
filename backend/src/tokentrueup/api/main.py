@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Annotated, Any
@@ -136,6 +137,12 @@ class NewUser(BaseModel):
     password: str
 
 
+class Signup(BaseModel):
+    email: str
+    name: str
+    password: str
+
+
 @app.post("/api/auth/login")
 async def login(body: Login, response: Response):
     email = body.email.strip().lower()
@@ -147,6 +154,49 @@ async def login(body: Login, response: Response):
             login_guard.fail(email)
             raise HTTPException(401, "email or password is incorrect")
         login_guard.clear(email)
+        token = await auth.create_session(conn, user["id"])
+        await conn.commit()
+    response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
+                        max_age=int(auth.SESSION_TTL.total_seconds()), path="/")
+    return ok(user)
+
+
+@app.post("/api/auth/signup")
+async def signup(body: Signup, response: Response):
+    """Create a self-serve account and sign it in."""
+    async with pool.connection() as conn:
+        try:
+            uid = await auth.create_user(conn, body.email, body.name, body.password, "admin")
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, "that email already has an account") from None
+        token = await auth.create_session(conn, uid)
+        await conn.commit()
+    user = {"id": uid, "email": body.email.strip().lower(), "name": body.name.strip(), "role": "admin"}
+    response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
+                        max_age=int(auth.SESSION_TTL.total_seconds()), path="/")
+    return ok(user)
+
+
+@app.post("/api/auth/demo")
+async def demo_session(response: Response):
+    """Issue an invisible session for the public synthetic demo."""
+    email = "demo@tokentrueup.local"
+    async with pool.connection() as conn:
+        async with conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute("SELECT id, email, name, role FROM users WHERE email = %s", (email,))
+            user = await cur.fetchone()
+        if user is None:
+            try:
+                uid = await auth.create_user(conn, email, "Demo visitor", secrets.token_urlsafe(24), "admin")
+            except psycopg.errors.UniqueViolation:
+                await conn.rollback()
+                async with conn.cursor(row_factory=dict_row) as cur:
+                    await cur.execute("SELECT id, email, name, role FROM users WHERE email = %s", (email,))
+                    user = await cur.fetchone()
+            else:
+                user = {"id": uid, "email": email, "name": "Demo visitor", "role": "admin"}
         token = await auth.create_session(conn, user["id"])
         await conn.commit()
     response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
@@ -206,9 +256,9 @@ class KeyUpdate(BaseModel):
 
 
 @app.get("/api/connections", dependencies=VIEW)
-async def connections_list():
+async def connections_list(user: CurrentUser):
     async with pool.connection() as conn:
-        return ok(await connections.list_connections(conn))
+        return ok(await connections.list_connections(conn, user["id"]))
 
 
 @app.post("/api/connections", dependencies=ADMIN)

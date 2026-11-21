@@ -1,162 +1,42 @@
-"use client";
-import { useState } from "react";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { dollars, useApi } from "@/lib/api";
-import Tabs, { TabPanel, type TabDef } from "@/components/trueup/Tabs";
+import Link from "next/link";
 
-const COLORS = ["#4f46e5", "#0891b2", "#d97706", "#db2777", "#16a34a"];
-type SpendView = "minute" | "daily" | "keys";
-
-function pivot(rows: any[], key: string, fmt: (v: string) => string) {
-  const by = new Map<string, any>();
-  const teams = new Set<string>();
-  for (const r of rows ?? []) {
-    const k = fmt(r[key]);
-    teams.add(r.team);
-    by.set(k, { ...(by.get(k) ?? { t: k }), [r.team]: Number(r.dollars) });
-  }
-  const sortedTeams = [...teams].sort();
-  const data = [...by.values()].map((point) => {
-    for (const team of sortedTeams) point[team] ??= 0;
-    return point;
-  });
-  return { data, teams: sortedTeams };
-}
-
-const hhmm = (ts: string) => new Date(ts).toLocaleTimeString("en-GB", {
-  hour: "2-digit", minute: "2-digit", timeZone: "America/New_York",
-});
-const day = (d: string) => String(d).slice(5, 10);
-
-function minutePivot(rows: any[], teams: string[], simNow: string, minutes = 60) {
-  const end = new Date(simNow);
-  end.setUTCSeconds(0, 0);
-  const by = new Map<number, any>();
-
-  for (let i = minutes - 1; i >= 0; i--) {
-    const ts = end.getTime() - i * 60_000;
-    // A missing aggregate bucket means ingestion stopped. Keep it null so Recharts
-    // breaks the area instead of drawing a misleading fall to $0 and back.
-    by.set(ts, Object.fromEntries([["t", hhmm(new Date(ts).toISOString())], ...teams.map((team) => [team, null])]));
-  }
-
-  for (const row of rows ?? []) {
-    const bucket = new Date(row.bucket);
-    bucket.setUTCSeconds(0, 0);
-    const point = by.get(bucket.getTime());
-    if (point && teams.includes(row.team)) point[row.team] = Number(row.dollars);
-  }
-
-  return { data: [...by.values()], teams };
-}
-
-export default function LiveSpend() {
-  const [view, setView] = useState<SpendView>("minute");
-  const { data, error } = useApi("/api/spend/live?minutes=60");
-  if (error) return <div className="card text-red-700">API unreachable: {String(error.message)}. Is `make demo` running?</div>;
-  if (!data) return <div className="card">Loading…</div>;
-  const teams = [...new Set<string>(data.keys.map((key: any) => key.team))].sort();
-  const minute = minutePivot(data.series, teams, data.sim_now);
-  const daily = pivot(data.daily, "day", day);
-  const mtd = data.keys.reduce((a: number, k: any) => a + Number(k.mtd_dollars), 0);
-  const proj = data.keys.reduce((a: number, k: any) => a + Number(k.projected_month_end), 0);
-  const burn = data.keys.reduce((a: number, k: any) => a + Number(k.run_rate_hourly), 0);
-  const pauses = data.pauses ?? [];
-  const views: TabDef<SpendView>[] = [
-    { key: "minute", label: "Minute-by-minute" },
-    { key: "daily", label: "Daily spend" },
-    { key: "keys", label: "API keys", count: data.keys.length },
-  ];
-
+export default function Landing() {
   return (
-    <>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Month-to-date usage spend" value={dollars(mtd)} />
-        <Stat label="Projected at month end" value={dollars(proj)} />
-        <Stat label="Current burn rate (last 5 min)" value={`${dollars(burn)}/h`} />
-      </div>
-
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="px-5 pt-2">
-          <Tabs tabs={views} value={view} onChange={setView} idPrefix="spend-view" ariaLabel="Live spend views" />
+    <main className="min-h-screen w-full bg-paper text-ink">
+      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
+        <Link href="/" className="text-[13px] font-bold tracking-[0.22em]">TOKENTRUEUP</Link>
+        <div className="flex items-center gap-2">
+          <Link href="/login" className="tu-btn-ghost">Sign in</Link>
+          <Link href="/signup" className="tu-btn-primary">Create account</Link>
         </div>
-        <div className="p-5">
-          <TabPanel idPrefix="spend-view" k="minute" value={view}>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="font-semibold">Spend per minute, last hour</h2>
-                <p className="mt-0.5 text-xs text-ink-3">Real-time aggregate · usage_1m · Eastern time</p>
-              </div>
-              {data.paused && <span className="pill bg-amber-100 text-amber-800">Paused · simulation clock frozen</span>}
-            </div>
-            <ResponsiveContainer width="100%" height={420}>
-              <AreaChart data={minute.data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="t" fontSize={11} />
-                <YAxis fontSize={11} tickFormatter={(v) => `$${v}`} />
-                <Tooltip formatter={(v: number) => dollars(v)} />
-                <Legend />
-                {pauses.map((p: any, i: number) => {
-                  const seconds = Number(p.duration_seconds);
-                  const duration = seconds < 60 ? `${Math.max(1, Math.round(seconds))}s` : `${Math.round(seconds / 60)}m`;
-                  return <ReferenceLine key={`${p.sim_at}-${i}`} x={hhmm(p.sim_at)} stroke="#d97706" strokeDasharray="4 4"
-                    label={{ value: p.real_ended_at ? `Paused ${duration}` : "Paused", position: "insideTopRight", fill: "#92400e", fontSize: 11 }} />;
-                })}
-                {minute.teams.map((t, i) => (
-                  <Area key={t} type="linear" dataKey={t} stackId="1" connectNulls={false} stroke={COLORS[i % 5]} fill={COLORS[i % 5]} fillOpacity={0.35} isAnimationActive={false} />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
-          </TabPanel>
-
-          <TabPanel idPrefix="spend-view" k="daily" value={view}>
-            <div className="mb-4">
-              <h2 className="font-semibold">Daily spend this period</h2>
-              <p className="mt-0.5 text-xs text-ink-3">Daily cost aggregate · usage_1d_cost</p>
-            </div>
-            <ResponsiveContainer width="100%" height={420}>
-              <BarChart data={daily.data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="t" fontSize={11} />
-                <YAxis fontSize={11} tickFormatter={(v) => `$${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v: number) => dollars(v)} />
-                <Legend />
-                {daily.teams.map((t, i) => <Bar key={t} dataKey={t} stackId="1" fill={COLORS[i % 5]} isAnimationActive={false} />)}
-              </BarChart>
-            </ResponsiveContainer>
-          </TabPanel>
-
-          <TabPanel idPrefix="spend-view" k="keys" value={view}>
-            <div className="mb-4">
-              <h2 className="font-semibold">API keys</h2>
-              <p className="mt-0.5 text-xs text-ink-3">Credentials are write-only and never displayed. Only ownership and spend metadata are shown.</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="tbl min-w-[760px]">
-                <thead><tr><th>Provider</th><th>Team</th><th>Owner</th><th className="num">MTD</th><th className="num">Avg/h (24h)</th><th className="num">Now/h</th><th className="num">Projected</th></tr></thead>
-                <tbody>
-                  {data.keys.map((k: any) => {
-                    const hot = Number(k.run_rate_hourly) > 3 * Math.max(Number(k.avg_hourly_24h), 1);
-                    return (
-                      <tr key={k.id} className={hot ? "bg-red-50" : ""}>
-                        <td>{k.provider_id}</td><td>{k.team}</td>
-                        <td>{k.owner ?? <span className="pill bg-amber-100 text-amber-800">no owner</span>}</td>
-                        <td className="num">{dollars(k.mtd_dollars)}</td><td className="num">{dollars(k.avg_hourly_24h)}</td>
-                        <td className={`num ${hot ? "font-semibold text-red-700" : ""}`}>{dollars(k.run_rate_hourly)}</td>
-                        <td className="num">{dollars(k.projected_month_end)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </TabPanel>
+      </nav>
+      <section className="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 lg:grid-cols-[0.85fr_1.15fr] lg:py-28">
+        <div>
+          <p className="tu-eyebrow text-green">AI spend operations</p>
+          <h1 className="mt-4 max-w-2xl font-serif text-5xl leading-[0.98] sm:text-6xl">Know where every AI dollar went.</h1>
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-2">Detect runaway agents, close usage spend, and reconcile provider invoices with evidence your finance team can trust.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/demo" className="tu-btn-primary px-5 py-3">Explore the synthetic demo</Link>
+            <Link href="/signup" className="tu-btn-secondary px-5 py-3">Connect your own data</Link>
+          </div>
+          <p className="mt-4 text-xs text-ink-3">The demo uses synthetic providers, credentials, usage, invoices, and spend.</p>
         </div>
-      </div>
-    </>
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface p-3 shadow-[0_24px_80px_rgba(22,33,27,0.12)]">
+          <div className="rounded-xl border border-line bg-slate-50 p-5">
+            <div className="flex items-center justify-between"><span className="font-semibold">Spend per minute</span><span className="pill bg-green-bg text-green">Live</span></div>
+            <div className="mt-8 flex h-64 items-end gap-2 border-b border-l border-slate-300 px-3">
+              {[31,34,32,36,35,38,37,39,42,40,43,44,46,45,49,47,51,55,52,58,56,62,60,66].map((height, i) => (
+                <div key={i} className="min-w-0 flex-1 rounded-t bg-green/80" style={{ height: `${height}%` }} />
+              ))}
+            </div>
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              {[["Month to date", "$184,290"], ["Current burn", "$391/h"], ["Open cases", "3"]].map(([label, value]) => (
+                <div key={label} className="rounded-lg border border-line bg-white p-3"><div className="text-[10px] uppercase tracking-wide text-ink-3">{label}</div><div className="mt-1 font-semibold">{value}</div></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="card"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div></div>;
 }

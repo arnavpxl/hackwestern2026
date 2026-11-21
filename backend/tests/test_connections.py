@@ -63,6 +63,8 @@ async def test_add_list_rotate_revoke(conn):
     row = next(c for c in listing["connections"] if c["id"] == cid)
     assert row["key_last4"] == ADMIN_KEY[-4:] and row["status"] == "connected"
     assert "encrypted_key" not in row and ADMIN_KEY not in json.dumps(listing, default=str)
+    assert any(c["id"] == cid for c in (await connections.list_connections(conn, uid))["connections"])
+    assert not any(c["id"] == cid for c in (await connections.list_connections(conn, uid + 999_999))["connections"])
 
     new_key = "sk-ant-admin02-" + "y" * 40
     await connections.rotate_key(conn, email, cid, new_key)

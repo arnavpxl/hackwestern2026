@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 /** Case pages are full-bleed (they own their right rail); every other page keeps the old container. */
 export default function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
-  if (path.startsWith("/cases/")) {
+  if (path.includes("/cases/")) {
     return <main className="min-w-0 flex-1 bg-surface">{children}</main>;
   }
   return (

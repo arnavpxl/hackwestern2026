@@ -5,13 +5,6 @@ import { useEffect, useState } from "react";
 import { API, get, post, usd, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "./auth-gate";
 
-const NAV = [
-  ["/", "Live spend"],
-  ["/close", "Close"],
-  ["/recon", "Reconciliation"],
-  ["/connections", "Connections"],
-  ["/uth", "Under the hood"],
-];
 const SIMULATION_SELECTION_KEY = "ttu-simulation-selection";
 const SCENARIO_OPTIONS = new Set(["runaway", "stealth_price", "duplicate_invoice", "price_change", "late_data"]);
 
@@ -24,10 +17,10 @@ type RunawayAlert = {
   baselineHourlyCents?: number;
 };
 
-export default function Header() {
+export default function Header({ demoMode = false }: { demoMode?: boolean }) {
   const path = usePathname();
   const router = useRouter();
-  const { data: s, mutate } = useApi("/api/state", 1000);
+  const { data: s, mutate } = useApi(demoMode ? "/api/state" : null, 1000);
   const me = useMe();
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -35,6 +28,10 @@ export default function Header() {
   const [demoOpen, setDemoOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [selectedSimulation, setSelectedSimulation] = useState("");
+  const root = demoMode ? "/demo" : "/app";
+  const nav = demoMode
+    ? [[root, "Live spend"], [`${root}/close`, "Close"], [`${root}/recon`, "Reconciliation"], [`${root}/uth`, "Under the hood"]]
+    : [[root, "Overview"], [`${root}/connections`, "Connections"]];
 
   useEffect(() => setNavOpen(false), [path]);
   useEffect(() => {
@@ -50,6 +47,7 @@ export default function Header() {
 
   // anomaly cases are opened by a job inside the database; it NOTIFYs, the API relays over SSE
   useEffect(() => {
+    if (!demoMode) return;
     const es = new EventSource(`${API}/api/events`, { withCredentials: true });
     es.addEventListener("case", (e) => {
       try {
@@ -73,7 +71,7 @@ export default function Header() {
       } catch {}
     });
     return () => es.close();
-  }, []);
+  }, [demoMode]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 6000);
@@ -100,7 +98,7 @@ export default function Header() {
       rememberSimulation("runaway");
       setDemoOpen(false);
       setToast("Demo started: an AI agent is entering a runaway retry loop");
-      router.push("/");
+      router.push(root);
       mutate();
     } catch (e) {
       setToast(`Demo failed to start: ${(e as Error).message}`);
@@ -109,7 +107,7 @@ export default function Header() {
     }
   };
 
-  const active = (href: string) => path === href || (href === "/close" && path.startsWith("/cases/"));
+  const active = (href: string) => path === href || (href === `${root}/close` && path.startsWith(`${root}/cases/`));
   const live = s?.llm_mode === "live";
   const activeScenarios = Object.entries(s?.scenario ?? {}).filter(([, value]: [string, any]) =>
     value && (typeof value !== "object" || value.active !== false));
@@ -126,10 +124,10 @@ export default function Header() {
       </div>
 
       <div id="sidebar-body" className={`${navOpen ? "flex" : "hidden"} flex-1 flex-col gap-0.5 px-3.5 pb-4 min-[761px]:flex min-[761px]:px-0 min-[761px]:pb-0`}>
-        <p className="mb-3 rounded-lg border border-amber-line bg-amber-bg px-2.5 py-2 text-[11px] leading-snug font-semibold text-amber">
+        {demoMode && <p className="mb-3 rounded-lg border border-amber-line bg-amber-bg px-2.5 py-2 text-[11px] leading-snug font-semibold text-amber">
           Synthetic data: every provider, key, invoice and dollar here is simulated
-        </p>
-        <section aria-labelledby="simulation-controls" className="flex flex-col gap-2.5">
+        </p>}
+        {demoMode && <section aria-labelledby="simulation-controls" className="flex flex-col gap-2.5">
           <h2 id="simulation-controls" className="px-1 text-[11px] font-semibold tracking-[0.1em] text-ink-3 uppercase">Simulation</h2>
           <div className="rounded-lg border border-line bg-surface px-2.5 py-2" title="sim clock">
             <div className="text-[13px] font-semibold text-ink tabular-nums">{s ? when(s.sim_now) : "connecting…"}</div>
@@ -190,10 +188,10 @@ export default function Header() {
               <span aria-hidden>▶</span> Run product demo
             </button>
           )}
-        </section>
+        </section>}
 
         <nav aria-label="Primary" className="mt-3 flex flex-col gap-0.5 border-t border-line pt-3">
-          {NAV.map(([href, label]) => (
+          {nav.map(([href, label]) => (
             <Link key={href} href={href} aria-current={active(href) ? "page" : undefined}
               className={`tu-focus flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-sm ${active(href)
                 ? "border-line bg-surface font-semibold text-ink"
@@ -207,13 +205,15 @@ export default function Header() {
         <div className="min-h-4 flex-1" />
 
         <div className="flex flex-col gap-2.5 border-t border-line pt-3.5">
+          {demoMode && (
           <span className="flex items-center gap-1.5 px-2.5 text-xs text-ink-2" title={s?.llm_model ?? "deterministic fallback agents"}>
             {live
               ? <img src="/trueup/dot-live.svg" alt="" width={7} height={7} />
               : <span aria-hidden className="size-[7px] rounded-full bg-ink-3" />}
             {s ? (live ? "Model live" : `Agents: ${s.llm_mode ?? "?"}`) : "Agents: ?"}
           </span>
-          {me && (
+          )}
+          {me && !demoMode && (
             <div className="flex items-center justify-between gap-2 px-2.5 text-xs text-ink-2">
               <span className="min-w-0 truncate">{me.name} · <span className="font-semibold text-ink">{me.role}</span></span>
               <button type="button" className="tu-focus rounded font-semibold text-green hover:underline" onClick={signOut}>Sign out</button>
@@ -225,7 +225,7 @@ export default function Header() {
       {toast && (
         <div role="status" className="fixed right-4 bottom-4 z-40 rounded-lg bg-ink px-4 py-2 text-sm text-white shadow-lg">{toast}</div>
       )}
-      {runawayAlert && <RunawaySpendAlert alert={runawayAlert} dismiss={() => setRunawayAlert(null)} />}
+      {runawayAlert && <RunawaySpendAlert alert={runawayAlert} caseRoot={`${root}/cases`} dismiss={() => setRunawayAlert(null)} />}
       {demoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" role="dialog" aria-modal="true" aria-labelledby="demo-title" onMouseDown={(e) => e.target === e.currentTarget && setDemoOpen(false)}>
           <div className="w-full max-w-2xl rounded-xl bg-surface p-6 shadow-2xl">
@@ -257,7 +257,7 @@ export default function Header() {
   );
 }
 
-function RunawaySpendAlert({ alert, dismiss }: { alert: RunawayAlert; dismiss: () => void }) {
+function RunawaySpendAlert({ alert, caseRoot, dismiss }: { alert: RunawayAlert; caseRoot: string; dismiss: () => void }) {
   const projected = Number.isFinite(alert.projectedHourlyCents) ? alert.projectedHourlyCents : undefined;
   const baseline = Number.isFinite(alert.baselineHourlyCents) ? alert.baselineHourlyCents : undefined;
   const multiple = projected != null && baseline != null && baseline > 0 ? Math.round(projected / baseline) : null;
@@ -298,7 +298,7 @@ function RunawaySpendAlert({ alert, dismiss }: { alert: RunawayAlert; dismiss: (
           TokenTrueUp detected this automatically and opened case #{alert.caseId} with reproducible evidence.
         </p>
         <div className="mt-4 flex items-center gap-2">
-          <Link href={`/cases/${alert.caseId}`} onClick={dismiss}
+          <Link href={`${caseRoot}/${alert.caseId}`} onClick={dismiss}
             className="tu-focus inline-flex flex-1 items-center justify-center rounded-lg bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-800">
             Investigate case #{alert.caseId} <span aria-hidden>→</span>
           </Link>

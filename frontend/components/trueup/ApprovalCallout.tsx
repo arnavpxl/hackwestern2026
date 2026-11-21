@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useAppRoot } from "@/lib/routes";
 
 /** Figma Callout/Approval needed. Only rendered while a learned rule from this case is proposed. */
 export default function ApprovalCallout({ rule, busy, onApprove }: {
@@ -6,6 +7,7 @@ export default function ApprovalCallout({ rule, busy, onApprove }: {
   busy: boolean;
   onApprove: () => void;
 }) {
+  const root = useAppRoot();
   const r = rule.replay;
   return (
     <section aria-labelledby="approval-title" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-amber-line bg-amber-bg px-4 py-3.5">
@@ -18,7 +20,7 @@ export default function ApprovalCallout({ rule, busy, onApprove }: {
       </div>
       <div className="flex gap-2">
         {/* The replay table (before/after by month) lives on the reconciliation page. */}
-        <Link href="/recon" className="tu-btn-secondary">Review diff</Link>
+        <Link href={`${root}/recon`} className="tu-btn-secondary">Review diff</Link>
         <button type="button" className="tu-btn-primary" disabled={busy} onClick={onApprove}>
           {busy ? "Approving…" : "Approve rule"}
         </button>

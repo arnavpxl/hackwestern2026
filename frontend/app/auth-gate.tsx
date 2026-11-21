@@ -1,5 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { get, post } from "@/lib/api";
 
 export type Role = "viewer" | "controller" | "admin";
@@ -14,18 +16,44 @@ export const useMe = () => useContext(MeContext);
 /** True when the user's role is at least `role`. */
 export const allowed = (me: Me | null, role: Role) => !!me && RANK[me.role] >= RANK[role];
 
-/** Shows a sign-in form until the server confirms a session, then renders the app. */
+const PUBLIC_PAGES = new Set(["/", "/login", "/signup"]);
+
+/** Keeps marketing/auth pages public, provisions the demo silently, and protects the connected app. */
 export default function AuthGate({ children }: { children: ReactNode }) {
+  const path = usePathname();
+  const router = useRouter();
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   useEffect(() => {
-    get("/api/auth/me").then(setMe).catch(() => setMe(null));
-  }, []);
+    let active = true;
+    if (PUBLIC_PAGES.has(path)) {
+      setMe(null);
+      return () => { active = false; };
+    }
+    setMe(undefined);
+    get("/api/auth/me")
+      .catch(() => path === "/demo" || path.startsWith("/demo/") ? post("/api/auth/demo") : Promise.reject())
+      .then(async (user: Me) => {
+        const isDemo = path === "/demo" || path.startsWith("/demo/");
+        if (!isDemo && user.email === "demo@tokentrueup.local") {
+          await post("/api/auth/logout").catch(() => {});
+          throw new Error("demo sessions cannot open the connected app");
+        }
+        if (active) setMe(user);
+      })
+      .catch(() => {
+        if (!active) return;
+        setMe(null);
+        router.replace(`/login?next=${encodeURIComponent(path)}`);
+      });
+    return () => { active = false; };
+  }, [path, router]);
+  if (PUBLIC_PAGES.has(path)) return <>{children}</>;
   if (me === undefined) return <div className="p-8 text-sm text-slate-500">Loading…</div>;
-  if (me === null) return <LoginForm onSignedIn={setMe} />;
+  if (me === null) return <div className="p-8 text-sm text-slate-500">Taking you to sign in…</div>;
   return <MeContext.Provider value={me}>{children}</MeContext.Provider>;
 }
 
-function LoginForm({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
+export function LoginForm({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +73,7 @@ function LoginForm({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-slate-50 px-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <form onSubmit={submit} className="w-full space-y-4">
         <div>
           <h1 className="text-lg font-bold text-ink">TokenTrueUp</h1>
           <p className="text-sm text-slate-500">Sign in to continue</p>
@@ -63,7 +90,7 @@ function LoginForm({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
         </label>
         {error && <p className="text-sm text-rose-700">{error}</p>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-      </form>
-    </div>
+        <p className="text-center text-sm text-ink-3">No account? <Link href="/signup" className="font-semibold text-green hover:underline">Create one</Link></p>
+    </form>
   );
 }

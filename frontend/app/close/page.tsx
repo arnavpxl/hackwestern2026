@@ -4,8 +4,10 @@ import { useState } from "react";
 import { post, usd, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
+import { useAppRoot } from "@/lib/routes";
 
 export default function Close() {
+  const root = useAppRoot();
   const { data, mutate } = useApi("/api/close/summary");
   const me = useMe();
   const [busy, setBusy] = useState(false);
@@ -37,7 +39,7 @@ export default function Close() {
               <tr key={c.id} className={c.type === "anomaly" ? "bg-rose-50/50" : ""}>
                 <td className="text-slate-400">{c.id}</td>
                 <td>{c.type}</td>
-                <td><Link className="text-indigo-700 hover:underline" href={`/cases/${c.id}`}>{c.title}</Link>
+                <td><Link className="text-indigo-700 hover:underline" href={`${root}/cases/${c.id}`}>{c.title}</Link>
                   {c.detection_latency_ms != null && <div className="text-xs text-slate-500">detected {(c.detection_latency_ms / 1000).toFixed(1)} s after the spike began</div>}</td>
                 <td>{c.provider_id}</td>
                 <td className="num">{usd(c.estimate_cents)}</td>

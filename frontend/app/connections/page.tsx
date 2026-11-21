@@ -4,8 +4,10 @@ import { useState, type FormEvent } from "react";
 import { post, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
+import { useAppRoot } from "@/lib/routes";
 
 export default function Connections() {
+  const root = useAppRoot();
   const { data, mutate } = useApi("/api/connections", 5000);
   const me = useMe();
   const canEdit = allowed(me, "admin");
@@ -132,7 +134,7 @@ export default function Connections() {
             )}
             {data.connections.map((c: any) => (
               <tr key={c.id}>
-                <td className="font-medium"><Link className="text-indigo-700 hover:underline" href={`/connections/${c.id}`}>{c.label}</Link></td>
+                <td className="font-medium"><Link className="text-indigo-700 hover:underline" href={`${root}/connections/${c.id}`}>{c.label}</Link></td>
                 <td>{c.provider_name}</td>
                 <td>{c.team}</td>
                 <td className="font-mono text-xs">{c.status === "connected" ? `••••${c.key_last4}` : "—"}</td>

@@ -4,10 +4,12 @@ import { use, useState } from "react";
 import { post, useApi, usd, when } from "@/lib/api";
 import { allowed, useMe } from "../../auth-gate";
 import Status from "../../status";
+import { useAppRoot } from "@/lib/routes";
 
 const num = (n: number | null | undefined) => (n == null ? "—" : Number(n).toLocaleString("en-US"));
 
 export default function ConnectionDetail({ params }: { params: Promise<{ id: string }> }) {
+  const root = useAppRoot();
   const { id } = use(params);
   const { data, mutate } = useApi(`/api/connections/${id}`, 5000);
   const { data: lists } = useApi("/api/connections", 60000);
@@ -58,7 +60,7 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
     <>
       <div className="card">
         <div className="flex flex-wrap items-center gap-3">
-          <Link href="/connections" className="text-sm text-indigo-700 hover:underline">← Connections</Link>
+          <Link href={`${root}/connections`} className="text-sm text-indigo-700 hover:underline">← Connections</Link>
           <h1 className="text-xl font-semibold">{c.label}</h1><Status s={c.status} />
           {canEdit && c.status === "connected" && <button className="btn-primary ml-auto" disabled={busy} onClick={syncNow}>Sync now</button>}
         </div>

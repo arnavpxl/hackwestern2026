@@ -34,4 +34,7 @@ export const dollars = (d: number | null | undefined) =>
   d == null ? "—" : Number(d).toLocaleString("en-US", { style: "currency", currency: "USD" });
 
 export const when = (ts: string | null | undefined) =>
-  ts ? new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC" : "—";
+  ts ? new Date(ts).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    timeZone: "America/New_York", timeZoneName: "short",
+  }) : "—";

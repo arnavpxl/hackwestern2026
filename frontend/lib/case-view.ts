@@ -22,13 +22,16 @@ export type CasePayload = {
 
 // ------------------------------------------------------------------ formatting
 
-const UTC = { timeZone: "UTC" } as const;
+const EASTERN = { timeZone: "America/New_York" } as const;
+const UTC = { timeZone: "UTC" } as const; // billing-period dates have no time component
 
 export const shortDate = (ts: string | null | undefined) =>
-  ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", ...UTC }) : "—";
+  ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", ...EASTERN }) : "—";
 
 export const shortTime = (ts: string | null | undefined) =>
-  ts ? new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", ...UTC }) : "—";
+  ts ? new Date(ts).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short", ...EASTERN,
+  }) : "—";
 
 /** "2026-12-01" → "Dec 1 – Dec 31, 2026" */
 export function periodRange(period: string | null | undefined) {

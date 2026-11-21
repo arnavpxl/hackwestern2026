@@ -23,7 +23,9 @@ function pivot(rows: any[], key: string, fmt: (v: string) => string) {
   return { data, teams: sortedTeams };
 }
 
-const hhmm = (ts: string) => new Date(ts).toISOString().slice(11, 16);
+const hhmm = (ts: string) => new Date(ts).toLocaleTimeString("en-GB", {
+  hour: "2-digit", minute: "2-digit", timeZone: "America/New_York",
+});
 const day = (d: string) => String(d).slice(5, 10);
 
 function minutePivot(rows: any[], teams: string[], simNow: string, minutes = 60) {
@@ -83,7 +85,7 @@ export default function LiveSpend() {
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="font-semibold">Spend per minute, last hour</h2>
-                <p className="mt-0.5 text-xs text-ink-3">Real-time aggregate · usage_1m</p>
+                <p className="mt-0.5 text-xs text-ink-3">Real-time aggregate · usage_1m · Eastern time</p>
               </div>
               {data.paused && <span className="pill bg-amber-100 text-amber-800">Paused · simulation clock frozen</span>}
             </div>
@@ -127,17 +129,17 @@ export default function LiveSpend() {
           <TabPanel idPrefix="spend-view" k="keys" value={view}>
             <div className="mb-4">
               <h2 className="font-semibold">API keys</h2>
-              <p className="mt-0.5 text-xs text-ink-3">Current ownership, run rate, and month-end projection</p>
+              <p className="mt-0.5 text-xs text-ink-3">Credentials are write-only and never displayed. Only ownership and spend metadata are shown.</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="tbl min-w-[900px]">
-                <thead><tr><th>Key</th><th>Provider</th><th>Team</th><th>Owner</th><th className="num">MTD</th><th className="num">Avg/h (24h)</th><th className="num">Now/h</th><th className="num">Projected</th></tr></thead>
+              <table className="tbl min-w-[760px]">
+                <thead><tr><th>Provider</th><th>Team</th><th>Owner</th><th className="num">MTD</th><th className="num">Avg/h (24h)</th><th className="num">Now/h</th><th className="num">Projected</th></tr></thead>
                 <tbody>
                   {data.keys.map((k: any) => {
                     const hot = Number(k.run_rate_hourly) > 3 * Math.max(Number(k.avg_hourly_24h), 1);
                     return (
                       <tr key={k.id} className={hot ? "bg-red-50" : ""}>
-                        <td className="font-mono text-xs">{k.label}</td><td>{k.provider_id}</td><td>{k.team}</td>
+                        <td>{k.provider_id}</td><td>{k.team}</td>
                         <td>{k.owner ?? <span className="pill bg-amber-100 text-amber-800">no owner</span>}</td>
                         <td className="num">{dollars(k.mtd_dollars)}</td><td className="num">{dollars(k.avg_hourly_24h)}</td>
                         <td className={`num ${hot ? "font-semibold text-red-700" : ""}`}>{dollars(k.run_rate_hourly)}</td>

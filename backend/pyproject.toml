@@ -1,0 +1,45 @@
+[project]
+name = "tokentrueup"
+version = "0.1.0"
+description = "Agentic month-end accrual engine for AI/LLM + cloud API spend on Tiger Data"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "psycopg[binary,pool]>=3.2",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "numpy>=2.1",
+  "anthropic>=0.40",
+  "sse-starlette>=2.1",
+]
+
+[project.scripts]
+db-migrate = "tokentrueup.migrate:main"
+ttu-seed = "tokentrueup.sim.seed:main"
+ttu-backfill = "tokentrueup.sim.backfill:main"
+ttu-generator = "tokentrueup.sim.generator:main"
+ttu-bench = "tokentrueup.bench.run_benchmarks:main"
+
+[dependency-groups]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.7", "httpx>=0.27"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tokentrueup"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]

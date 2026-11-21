@@ -1,0 +1,12 @@
+services:
+  tsdb:
+    image: timescale/timescaledb-ha:pg17
+    environment:
+      POSTGRES_PASSWORD: tokentrueup
+      POSTGRES_DB: tokentrueup
+    ports: ["5433:5432"]
+    volumes: [tsdb:/home/postgres/pgdata]
+    shm_size: 1gb
+    command: ["postgres", "-c", "shared_preload_libraries=timescaledb", "-c", "timescaledb.max_background_workers=16", "-c", "max_worker_processes=32"]
+volumes:
+  tsdb: {}

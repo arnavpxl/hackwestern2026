@@ -9,6 +9,7 @@ const NAV = [
   ["/", "Live spend"],
   ["/close", "Close"],
   ["/recon", "Reconciliation"],
+  ["/connections", "Connections"],
   ["/uth", "Under the hood"],
 ];
 

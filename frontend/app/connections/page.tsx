@@ -14,7 +14,7 @@ export default function Connections() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  if (!data) return <div className="card">Loadingâ€¦</div>;
+  if (!data) return <div className="card">Loading…</div>;
 
   // The key is sent once, then the field is cleared so it does not stay on screen.
   const add = async (e: FormEvent) => {
@@ -85,7 +85,7 @@ export default function Connections() {
         <h1 className="text-lg font-semibold">Provider connections</h1>
         <p className="mt-1 text-sm text-slate-600">
           Connect a provider so usage and cost data can be pulled in. Keys are encrypted when saved and never shown
-          again; only the last four characters are displayed. Syncing starts in the next step.
+          again; only the last four characters are displayed. Connected keys sync automatically every hour.
         </p>
       </div>
 
@@ -99,12 +99,12 @@ export default function Connections() {
           </label>
           <label className="text-sm">Name
             <input className="mt-1 w-full rounded border border-slate-300 px-2 py-2" required maxLength={60}
-              placeholder="e.g. Platform prod" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
+              placeholder="e.g. Platform prod" autoComplete="off" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
           </label>
           <label className="text-sm">Team
             <select className="mt-1 w-full rounded border border-slate-300 px-2 py-2" required value={form.team_id}
               onChange={(e) => setForm({ ...form, team_id: e.target.value })}>
-              <option value="">Chooseâ€¦</option>
+              <option value="">Choose…</option>
               {data.teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
@@ -113,7 +113,7 @@ export default function Connections() {
               autoComplete="off" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
           </label>
           <div className="flex items-end">
-            <button className="btn-primary w-full" disabled={busy || !form.team_id}>{busy ? "Savingâ€¦" : "Save connection"}</button>
+            <button className="btn-primary w-full" disabled={busy || !form.team_id}>{busy ? "Saving…" : "Save connection"}</button>
           </div>
         </form>
       )}
@@ -135,7 +135,7 @@ export default function Connections() {
                 <td className="font-medium"><Link className="text-indigo-700 hover:underline" href={`/connections/${c.id}`}>{c.label}</Link></td>
                 <td>{c.provider_name}</td>
                 <td>{c.team}</td>
-                <td className="font-mono text-xs">{c.status === "connected" ? `â€¢â€¢â€¢â€¢${c.key_last4}` : "â€”"}</td>
+                <td className="font-mono text-xs">{c.status === "connected" ? `••••${c.key_last4}` : "—"}</td>
                 <td><Status s={c.status} /></td>
                 <td className="whitespace-nowrap">{when(c.created_at)}{c.created_by && <div className="text-xs text-slate-500">{c.created_by}</div>}</td>
                 <td>{when(c.last_sync_at)}{c.last_error && <div className="text-xs text-rose-700">{c.last_error}</div>}</td>

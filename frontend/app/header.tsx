@@ -114,6 +114,8 @@ export default function Header() {
 
   const active = (href: string) => path === href || (href === "/close" && path.startsWith("/cases/"));
   const live = s?.llm_mode === "live";
+  const activeScenarios = Object.entries(s?.scenario ?? {}).filter(([, value]: [string, any]) =>
+    value && (typeof value !== "object" || value.active !== false));
 
   return (
     <aside className="sticky top-0 z-20 border-b border-line bg-paper min-[761px]:flex min-[761px]:h-screen min-[761px]:w-[232px] min-[761px]:shrink-0 min-[761px]:flex-col min-[761px]:border-r min-[761px]:border-b-0 min-[761px]:overflow-y-auto min-[761px]:px-3.5 min-[761px]:py-5">
@@ -207,6 +209,25 @@ export default function Header() {
               <option value="reset">↺ Reset demo</option>
             </select>
           </div>}
+          {allowed(me, "admin") && (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="tu-btn-secondary px-2.5 py-1.5" disabled={!!busy}
+                title="Clear the current run, rebuild a smooth normal last hour, and start live usage"
+                onClick={() => act("clean baseline", () => post("/api/sim/baseline"))}>
+                ↺ Clean baseline
+              </button>
+              <button type="button" className="tu-btn-secondary px-2.5 py-1.5 text-red-700" disabled={!!busy || activeScenarios.length === 0}
+                title="Stop active scenarios; keep their usage and cases as evidence"
+                onClick={() => act("stop scenarios", () => post("/api/scenario/stop"))}>
+                ■ Stop scenarios
+              </button>
+            </div>
+          )}
+          {allowed(me, "admin") && activeScenarios.length > 0 && (
+            <p className="px-1 text-[11px] leading-snug text-red-700">
+              Active: {activeScenarios.map(([name]) => name.replaceAll("_", " ")).join(", ")}
+            </p>
+          )}
           {allowed(me, "admin") && (
             <button type="button" className="tu-btn-primary w-full" disabled={!!busy} onClick={() => setDemoOpen(true)}>
               <span aria-hidden>▶</span> Run product demo

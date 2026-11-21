@@ -329,7 +329,11 @@ async def spend_live(minutes: int = 60):
         period = datetime.combine(s["close_period"], datetime.min.time(), s["sim_now"].tzinfo)
         end = month_start(period, 1)
         series = await rows(conn, """
-            SELECT u.bucket, t.name AS team, round(sum(u.cost_estimate_cents)::numeric / 100, 4) AS dollars,
+            SELECT u.bucket, t.name AS team,
+                   round(sum(u.cost_estimate_cents)::numeric / 100 *
+                     CASE WHEN u.bucket = time_bucket('1 minute', sim_now())
+                          THEN 60.0 / greatest(extract(epoch FROM (sim_now() - u.bucket)), 1)
+                          ELSE 1 END, 4) AS dollars,
                    sum(u.events) AS events
             FROM usage_1m u JOIN api_keys k ON k.id = u.api_key_id JOIN teams t ON t.id = k.team_id
             WHERE u.bucket > sim_now() - make_interval(mins => %s) AND u.bucket <= sim_now()
@@ -530,6 +534,8 @@ async def sim_action(action: str):
     async with pool.connection() as conn:
         if action in ("play", "pause"):
             return ok(await world.set_paused(conn, action == "pause"))
+        elif action == "baseline":
+            return ok(await world.reset_baseline(conn))
         elif action == "reset":
             return ok(await world.reset_world(conn))
         else:
@@ -570,6 +576,7 @@ async def scenario(name: str, on: bool = True, key: str = world.RUNAWAY_KEY):
             "stealth_price": lambda: world.scenario_stealth_price(conn),
             "duplicate_invoice": lambda: world.scenario_duplicate_invoice(conn),
             "late_data": lambda: world.scenario_late_data(conn),
+            "stop": lambda: world.stop_scenarios(conn),
         }.get(name)
         if not fn:
             raise HTTPException(404)

@@ -72,6 +72,16 @@ async def set_paused(conn: AsyncConnection, paused: bool) -> dict[str, Any]:
     return await get_state(conn)
 
 
+async def stop_scenarios(conn: AsyncConnection) -> dict[str, Any]:
+    """Return new usage to baseline without deleting the incident it produced."""
+    await conn.execute("UPDATE sim_state SET scenario = '{}', updated_at = now() WHERE id = 1")
+    # An announced price change is persisted in the rate table rather than sim_state.
+    # Remove only simulator-authored changes; generated usage and opened cases remain evidence.
+    await conn.execute("DELETE FROM price_changes WHERE note = 'announced price change (scenario)'")
+    await conn.commit()
+    return await get_state(conn)
+
+
 async def load_rate_tables(conn: AsyncConnection) -> dict:
     tables: dict[tuple[str, str], list] = {}
     cur = await conn.execute(
@@ -291,6 +301,49 @@ async def fast_forward(conn: AsyncConnection, to: datetime) -> dict[str, Any]:
             "sim_now": state["sim_now"].isoformat(), "invoices_delivered": delivered}
 
 
+async def reset_baseline(conn: AsyncConnection, window_minutes: int = 60) -> dict[str, Any]:
+    """Create a clean demo with a complete, gently varying live-spend window."""
+    await reset_world(conn)
+    state = await get_state(conn)
+    end = state["sim_now"]
+    end_epoch = end.timestamp()
+    current_bucket = end_epoch // 60 * 60
+    starts = current_bucket - np.arange(window_minutes - 1, -1, -1, dtype=float) * 60
+    start = datetime.fromtimestamp(starts[0], UTC)
+
+    # Remove old bursts/gaps from exactly the interval the chart displays.
+    await conn.execute("DELETE FROM usage_events WHERE ts >= %s AND ts <= %s", (start, end))
+    await conn.commit()
+
+    ids = await key_ids(conn)
+    tables = await load_rate_tables(conn)
+    origin = backfill_start(state["real_now"]).timestamp()
+    rng = np.random.default_rng(int(current_bucket))
+    batches = []
+    samples_per_minute = 20
+    elapsed = max(0.1, min(60.0, end_epoch - current_bucket))
+
+    for i, spec in enumerate(KEYS):
+        ts_parts, unit_parts = [], []
+        # Low-frequency waves make normal usage legible without looking artificial or noisy.
+        wave = 1 + 0.025 * np.sin(np.arange(window_minutes) / 4 + i * 0.7)
+        wave += 0.012 * np.sin(np.arange(window_minutes) / 1.8 + i * 1.3)
+        for j, minute in enumerate(starts):
+            duration = elapsed if j == window_minutes - 1 else 60.0
+            ts = np.sort(rng.uniform(minute, minute + duration, samples_per_minute))
+            midpoint = np.array([minute + duration / 2])
+            total = float(units_per_hour(spec, midpoint, origin)[0]) * duration / 3600 * wave[j]
+            ts_parts.append(ts)
+            unit_parts.append(np.full(samples_per_minute, total / samples_per_minute))
+        batches.append(build_events(i, ids[i], np.concatenate(ts_parts), np.concatenate(unit_parts), tables, rng))
+
+    rows = await copy_batches(conn, batches)
+    await conn.commit()
+    await refresh_ahead(conn, end, start=start)
+    resumed = await set_paused(conn, False)
+    return {"rows": rows, "window_minutes": window_minutes, "state": resumed}
+
+
 async def deliver_due_invoices(conn: AsyncConnection, state: dict) -> list[int]:
     """Providers invoice the close period N days after it ends (plus any scenario duplicates)."""
     period = datetime.combine(state["close_period"], datetime.min.time(), UTC)
@@ -361,6 +414,11 @@ async def scenario_price_change(conn: AsyncConnection, provider: str = "cortexa"
         (state["sim_now"], *(1 + pct / 100,) * 5, provider, model),
     )
     row = await cur.fetchone()
+    await conn.execute(
+        "UPDATE sim_state SET scenario = scenario || %s, updated_at = now() WHERE id = 1",
+        (Jsonb({"price_change": {"provider": provider, "model": model, "pct": pct,
+                                 "effective": row[0].isoformat()}}),),
+    )
     await conn.commit()
     return {"provider": provider, "model": model, "effective": row[0].isoformat(),
             "input_rate": float(row[1]), "output_rate": float(row[2])}
@@ -403,7 +461,8 @@ async def start_demo(conn: AsyncConnection) -> dict[str, Any]:
     The runaway is visible immediately. The unannounced price change stays hidden until
     invoices arrive, giving reconciliation a meaningful discrepancy to diagnose later.
     """
-    state = await reset_world(conn)
+    baseline = await reset_baseline(conn)
+    state = baseline["state"]
     scenario = {
         "runaway": {
             "key": RUNAWAY_KEY,
@@ -514,10 +573,12 @@ async def rewind_watermarks(conn: AsyncConnection, ahead_until: datetime) -> dic
             except Exception:
                 log.warning("cannot rewind %s watermark (no catalog access); run a full rebuild", view)
         cur = await conn.execute(
-            """SELECT ca.view_name, _timescaledb_functions.to_timestamp(_timescaledb_functions.cagg_watermark(h.id))
+            """SELECT ca.view_name,
+                      _timescaledb_functions.to_timestamp(
+                        _timescaledb_functions.cagg_watermark(h.id))::text
                FROM timescaledb_information.continuous_aggregates ca
                JOIN _timescaledb_catalog.hypertable h ON h.table_name = ca.materialization_hypertable_name""")
-        return {v: w.isoformat() for v, w in await cur.fetchall()}
+        return dict(await cur.fetchall())
     finally:
         await conn.set_autocommit(False)
 

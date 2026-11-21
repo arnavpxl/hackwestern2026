@@ -285,6 +285,13 @@ class FastForward(BaseModel):
     hours: float = 0
 
 
+@app.post("/api/demo/start")
+async def demo_start():
+    """Start the canonical product demo from a clean, useful state."""
+    async with pool.connection() as conn:
+        return ok(await world.start_demo(conn))
+
+
 @app.post("/api/sim/{action}")
 async def sim_action(action: str):
     async with pool.connection() as conn:

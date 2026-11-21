@@ -6,6 +6,7 @@ open -> (needs_info) -> estimated -> pending_approval | approved -> reconciled
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -168,9 +169,18 @@ async def outreach_if_needed(conn: AsyncConnection, case: dict, est: Estimate) -
     return False
 
 
+async def save_contract_evidence(conn: AsyncConnection, case_id: int, name: str, text: str, parsed) -> None:
+    await conn.execute(
+        "INSERT INTO evidence (case_id, kind, ref, content) VALUES (%s, 'contract', %s, %s)",
+        (case_id, name, Jsonb({"text": text, "parsed": parsed.output.model_dump(), "agent": parsed.audit()})),
+    )
+
+
 async def evaluate(conn: AsyncConnection, case: dict, start: datetime, end: datetime, as_of: datetime,
-                   pol: dict) -> dict:
-    """(Re)estimate one case and move it through the state machine."""
+                   pol: dict, deferred: list | None = None) -> dict:
+    """(Re)estimate one case and move it through the state machine. With `deferred`, the
+    explainer (an LLM call in live mode, no DB access) is queued for run_close to run
+    concurrently instead of being awaited here; the numbers and status never wait on it."""
     if case["status"] in FINAL:
         return case
     if inv := await invoiced(conn, case):
@@ -184,11 +194,10 @@ async def evaluate(conn: AsyncConnection, case: dict, start: datetime, end: date
     if first and case["contract_id"]:
         cur = await conn.execute("SELECT name, source_text FROM contracts WHERE id = %s", (case["contract_id"],))
         name, text = await cur.fetchone()
-        parsed = await runner.contract_parser(text)
-        await conn.execute(
-            "INSERT INTO evidence (case_id, kind, ref, content) VALUES (%s, 'contract', %s, %s)",
-            (case["id"], name, Jsonb({"text": text, "parsed": parsed.output.model_dump(), "agent": parsed.audit()})),
-        )
+        if deferred is not None:
+            deferred.append(("contract", case["id"], (name, text)))
+        else:
+            await save_contract_evidence(conn, case["id"], name, text, await runner.contract_parser(text))
     if first and case["po_id"]:
         await conn.execute(
             "INSERT INTO evidence (case_id, kind, ref, content) SELECT %s, 'po', po_number, to_jsonb(po)"
@@ -204,7 +213,8 @@ async def evaluate(conn: AsyncConnection, case: dict, start: datetime, end: date
             "INSERT INTO accrual_snapshots (ts, case_id, estimate_cents, confidence, reason) VALUES (sim_now(), %s, %s, %s, %s)",
             (case["id"], est.amount_cents, est.confidence, "initial" if first else "re-estimate"))
 
-    exp = await runner.explainer(case, est.model_dump(), est.facts(), list(pol["allowed_actions"]))
+    explain_args = (case, est.model_dump(), est.facts(), list(pol["allowed_actions"]))
+    exp = None if deferred is not None else await runner.explainer(*explain_args)
     blocking = waiting or ("open_anomaly" in est.flags and case["type"] == "usage")
     if case["type"] == "anomaly":
         status = "needs_info" if waiting else case["status"]
@@ -219,19 +229,24 @@ async def evaluate(conn: AsyncConnection, case: dict, start: datetime, end: date
     calc = est.model_dump()
     if case["type"] == "anomaly":
         calc = {**(case["calc"] or {}), "estimate": calc}
+    if deferred is not None:
+        deferred.append(("explain", case["id"], explain_args))
     await conn.execute(
-        """UPDATE obligation_cases SET estimate_cents = %s, confidence = %s, calc = %s, explanation = %s, status = %s,
+        """UPDATE obligation_cases SET estimate_cents = %s, confidence = %s, calc = %s,
+               explanation = COALESCE(%s, explanation), status = %s,
                approved_by = CASE WHEN %s = 'approved' AND approved_by IS NULL THEN 'policy:below_materiality'
                                   ELSE approved_by END,
                approved_at = CASE WHEN %s = 'approved' AND approved_at IS NULL THEN sim_now() ELSE approved_at END
            WHERE id = %s""",
-        (est.amount_cents, est.confidence, Jsonb(calc), Jsonb({**exp.output.model_dump(), "agent": exp.audit()}),
+        (est.amount_cents, est.confidence, Jsonb(calc),
+         Jsonb({**exp.output.model_dump(), "agent": exp.audit()}) if exp else None,
          status, status, status, case["id"]),
     )
     if status != case["status"] or first:
         await audit(conn, "system", case["id"], "estimated",
                     {"amount_cents": est.amount_cents, "status": status, "flags": est.flags,
-                     "explainer": exp.mode, "verified": exp.verification.ok})
+                     "explainer": exp.mode if exp else "deferred",
+                     "verified": exp.verification.ok if exp else None})
     return {**case, "status": status, "estimate_cents": est.amount_cents}
 
 
@@ -247,7 +262,20 @@ async def run_close(conn: AsyncConnection, provider: str | None = None) -> dict[
     cases = await fetch_cases(conn, where, params)
     # anomalies first: their resolution affects the usage cases
     cases.sort(key=lambda c: (c["type"] != "anomaly", c["id"]))
-    out = [await evaluate(conn, c, start, end, as_of, pol) for c in cases]
+    deferred: list = []
+    out = [await evaluate(conn, c, start, end, as_of, pol, deferred) for c in cases]
+    await conn.commit()
+    # explanations are text only: run them concurrently, then attach (every number is already stored)
+    runs = await asyncio.gather(*(runner.explainer(*args) if kind == "explain" else runner.contract_parser(args[1])
+                                  for kind, _, args in deferred))
+    for (kind, case_id, args), run in zip(deferred, runs, strict=True):
+        if kind == "contract":
+            await save_contract_evidence(conn, case_id, *args, run)
+            continue
+        await conn.execute("UPDATE obligation_cases SET explanation = %s WHERE id = %s",
+                           (Jsonb({**run.output.model_dump(), "agent": run.audit()}), case_id))
+        await audit(conn, f"agent:explainer({run.mode})", case_id, "explained",
+                    {"verified": run.verification.ok})
     await conn.commit()
     await conn.execute("SELECT pg_notify('cases', '{\"event\":\"close_run\"}')")
     await conn.commit()

@@ -15,6 +15,7 @@ from typing import Any
 
 import numpy as np
 from psycopg import AsyncConnection
+from psycopg.errors import LockNotAvailable
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
@@ -26,6 +27,8 @@ from .profiles import backfill_start, build_events, lognormal_split, month_start
 
 log = logging.getLogger("tokentrueup.sim")
 KEY_INDEX = {k.label: i for i, k in enumerate(KEYS)}
+FF_TAIL_S = 300.0
+FF_TAIL_EPS = 500.0
 
 
 async def get_state(conn: AsyncConnection) -> dict[str, Any]:
@@ -147,8 +150,8 @@ class LiveGenerator:
             loop_start = time.monotonic()
             try:
                 async with self.pool.connection() as conn:
+                    state = await get_state(conn)  # every tick: a stale offset/pause races reset_world
                     if loop_start - last_refresh > 1.0:
-                        state = await get_state(conn)
                         tables = await load_rate_tables(conn)
                         last_refresh = loop_start
                         await deliver_due_invoices(conn, state)
@@ -168,8 +171,11 @@ class LiveGenerator:
                         window_count += n
                         self.events_total += n
                     if state["sim_offset"].total_seconds() > 60 and loop_start - last_future_refresh > 10:
-                        await refresh_ahead(conn, datetime.fromtimestamp(sim_now, UTC))
                         last_future_refresh = loop_start
+                        try:
+                            await refresh_ahead(conn, datetime.fromtimestamp(sim_now, UTC))
+                        except LockNotAvailable:  # fast_forward is refreshing the same range
+                            pass
                     el = time.monotonic() - window_start
                     if el >= 1.0:
                         await conn.execute(
@@ -193,11 +199,13 @@ async def refresh_ahead(conn: AsyncConnection, sim_now: datetime, start: datetim
     await conn.commit()
     await conn.set_autocommit(True)
     try:
-        for view, end in (("usage_1m", sim_now - timedelta(minutes=1)),
-                          ("usage_1h", sim_now.replace(minute=0, second=0, microsecond=0)),
-                          ("usage_1d", sim_now.replace(hour=0, minute=0, second=0, microsecond=0))):
-            if end > start:
-                await conn.execute("CALL refresh_continuous_aggregate(%s, %s, %s)", (view, start, end))
+        for view, width in (("usage_1m", timedelta(minutes=1)), ("usage_1h", timedelta(hours=1)),
+                            ("usage_1d", timedelta(days=1))):
+            # whole buckets only: [floor(start), floor(sim_now)) — refresh rejects sub-bucket windows
+            lo, hi = (datetime.fromtimestamp(t.timestamp() // width.total_seconds() * width.total_seconds(), UTC)
+                      for t in (start, sim_now))
+            if hi > lo:
+                await conn.execute("CALL refresh_continuous_aggregate(%s, %s, %s)", (view, lo, hi))
     finally:
         await conn.set_autocommit(False)
 
@@ -214,14 +222,19 @@ async def fast_forward(conn: AsyncConnection, to: datetime) -> dict[str, Any]:
     origin = backfill_start(state["real_now"]).timestamp()
     rng = np.random.default_rng(int(to.timestamp()))
     t0, t1 = start.timestamp(), to.timestamp()
-    minutes = np.arange(np.ceil(t0 / 300) * 300, t1, 300.0)
+    # the last FF_TAIL_S seconds at live-like density: the detector's 2-minute window and the
+    # change-point search must never see one event carrying 5 minutes of spend
+    tail0 = max(t0, t1 - FF_TAIL_S)
+    minutes = np.arange(np.ceil(t0 / 300) * 300, tail0, 300.0)
     t = time.perf_counter()
-    rows = 0
     batches = []
     for i, spec in enumerate(KEYS):
         units = lognormal_split(units_per_hour(spec, minutes, origin) / 12, rng, sigma=0.2)
         batches.append(build_events(i, ids[i], minutes + rng.uniform(0, 299, len(minutes)), units, tables, rng))
     rows = await copy_batches(conn, batches)
+    for w0 in np.arange(tail0, t1, 30.0):
+        rows += await copy_batches(conn, live_window(w0, min(w0 + 30.0, t1), FF_TAIL_EPS, ids, origin,
+                                                     tables, rng, {}))
     scenario = dict(state["scenario"])
     if scenario.get("runaway"):
         scenario["runaway"]["active"] = False
@@ -248,6 +261,8 @@ async def deliver_due_invoices(conn: AsyncConnection, state: dict) -> list[int]:
         return []
     scenario = state["scenario"] or {}
     delivered = []
+    # the generator loop and fast_forward both deliver: serialize check-then-insert until commit
+    await conn.execute("SELECT pg_advisory_xact_lock(hashtext('deliver_due_invoices'))")
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             """SELECT p.id, p.invoice_lag_days FROM providers p
@@ -368,16 +383,59 @@ async def reset_world(conn: AsyncConnection) -> dict:
     """Drop fast-forwarded future data, clear close-period workflow state, rewind clock."""
     state = await get_state(conn)
     await conn.execute("UPDATE sim_state SET sim_offset = '0', paused = true, scenario = '{}' WHERE id = 1")
-    await conn.execute("DELETE FROM usage_events WHERE ts > now()")
+    await conn.commit()
+    await asyncio.sleep(1.0)  # let an in-flight generator tick (old offset) finish before deleting
+    # also the last 10 real minutes: a previous run's runaway must not trip the detector again
+    await conn.execute("DELETE FROM usage_events WHERE ts > now() - interval '10 minutes'")
     await conn.execute("DELETE FROM price_changes WHERE note LIKE '%%scenario%%' OR note LIKE '%%learned rule%%'")
-    await conn.execute("DELETE FROM ap_invoices WHERE period_start >= %s", (state["close_period"],))
-    await conn.execute("DELETE FROM obligation_cases")
+    # children first: rules -> cases -> invoices (recon links cases to invoices)
     await conn.execute("DELETE FROM learned_rules")
     await conn.execute("DELETE FROM audit_log")
     await conn.execute("DELETE FROM accrual_snapshots")
+    await conn.execute("DELETE FROM obligation_cases")
+    await conn.execute("DELETE FROM ap_invoices WHERE period_start >= %s", (state["close_period"],))
     await conn.execute("UPDATE api_keys SET owner_id = NULL WHERE label = 'growth-scraper-legacy'")
     await conn.commit()
+    await rewind_watermarks(conn, max(state["sim_now"], state["real_now"]))
     return await get_state(conn)
+
+
+async def rewind_watermarks(conn: AsyncConnection, ahead_until: datetime) -> dict[str, str]:
+    """After a fast-forward the cagg watermarks sit in the future, so live events at real now()
+    fall below them and real-time aggregation stops seeing them. Refreshing [now, then] over the
+    now-empty range deletes the future buckets, but TimescaleDB only ever advances a watermark,
+    so we then set it to the bucket containing real now() (a partially materialized bucket at or
+    above it is excluded by the view's `bucket < watermark` filter). That is a catalog write
+    (superuser); where it is refused, the fallback is a full rebuild (`make up`)."""
+    await conn.commit()
+    await conn.set_autocommit(True)
+    try:
+        cur = await conn.execute("SELECT now()")
+        now = (await cur.fetchone())[0]
+        end = ahead_until + timedelta(days=2)
+        for view, start in (("usage_1m", now - timedelta(hours=2)),
+                            ("usage_1h", now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)),
+                            ("usage_1d", now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1))):
+            await conn.execute("CALL refresh_continuous_aggregate(%s, %s, %s)", (view, start, end))
+        for view, width in (("usage_1m", "1 minute"), ("usage_1h", "1 hour"), ("usage_1d", "1 day")):
+            try:
+                await conn.execute(
+                    f"""UPDATE _timescaledb_catalog.continuous_aggs_watermark w
+                        SET watermark = _timescaledb_functions.to_unix_microseconds(
+                              time_bucket(interval '{width}', now()))
+                        FROM _timescaledb_catalog.continuous_agg ca
+                        WHERE ca.mat_hypertable_id = w.mat_hypertable_id AND ca.user_view_name = %s
+                          AND w.watermark > _timescaledb_functions.to_unix_microseconds(now())""",
+                    (view,))
+            except Exception:
+                log.warning("cannot rewind %s watermark (no catalog access); run a full rebuild", view)
+        cur = await conn.execute(
+            """SELECT ca.view_name, _timescaledb_functions.to_timestamp(_timescaledb_functions.cagg_watermark(h.id))
+               FROM timescaledb_information.continuous_aggregates ca
+               JOIN _timescaledb_catalog.hypertable h ON h.table_name = ca.materialization_hypertable_name""")
+        return {v: w.isoformat() for v, w in await cur.fetchall()}
+    finally:
+        await conn.set_autocommit(False)
 
 
 __all__ = ["MODELS", "month_start"]

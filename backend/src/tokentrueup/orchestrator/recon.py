@@ -16,6 +16,7 @@ from psycopg.types.json import Jsonb
 from ..agents import runner
 from ..estimators.base import jsonable
 from ..estimators.usage import UsageParams, estimate_usage
+from ..sim.invoices import apply_rate_override
 from ..sim.profiles import month_start
 from ..sim.world import get_state
 from .close import audit, fetch_cases
@@ -74,7 +75,12 @@ async def diagnose(conn: AsyncConnection, inv: dict, accrued: int) -> dict[str, 
         our_rate = float(dict(zip(["input_tokens", "output_tokens", "cached_tokens", "requests", "gpu_hours"],
                                   r, strict=True))[comp])
         if abs(our_rate - float(line["unit_rate_cents"])) > 1e-6:
-            impact = round(line["quantity"] * (float(line["unit_rate_cents"]) - our_rate))
+            p = {"model": line["model"], "component": comp, "rate": float(line["unit_rate_cents"]),
+                 "from": line["service_from"]}
+            async with conn.transaction(force_rollback=True):  # same discounts as the accrual
+                await apply_rate_override(conn, provider, p, "diagnosis what-if")
+                impact = (await estimate_usage(conn, provider, start, end, end, params)).amount_cents
+            impact -= est_now.amount_cents
             causes.append({"cause": "rate_change", "amount_cents": impact,
                            "detail": f"{line['model']} {comp}: invoiced {line['unit_rate_cents']} vs our "
                                      f"{our_rate} cents/{line['unit']} from {line['service_from'][:10]}",
@@ -211,20 +217,6 @@ async def propose_rule(conn: AsyncConnection, provider: str, cause: dict, case_i
     return rid
 
 
-async def _rate_rule_row(conn: AsyncConnection, provider: str, p: dict, note: str) -> None:
-    cols = {"input_tokens": "input_rate", "output_tokens": "output_rate", "cached_tokens": "cached_rate",
-            "requests": "request_rate", "gpu_hours": "gpu_rate"}
-    col = cols[p["component"]]
-    await conn.execute(
-        """INSERT INTO price_changes (ts, provider, model, input_rate, output_rate, cached_rate, request_rate, gpu_rate, note)
-            SELECT %(from)s, provider, model, input_rate, output_rate, cached_rate, request_rate, gpu_rate, %(note)s
-            FROM rate_at(%(provider)s, %(model)s, %(from)s)
-            ON CONFLICT (provider, model, ts) DO NOTHING""",
-        {"from": p["from"], "provider": provider, "model": p["model"], "note": note})
-    await conn.execute(f"UPDATE price_changes SET {col} = %s WHERE provider = %s AND model = %s AND ts = %s",
-                       (p["rate"], provider, p["model"], p["from"]))
-
-
 async def replay_rule(conn: AsyncConnection, rule_id: int) -> dict[str, Any]:
     """Re-run close-time accruals for every invoiced month (3 prior + current) with and
     without the rule. Runs on usage_1h_cost (cagg) so a full replay takes milliseconds."""
@@ -244,7 +236,7 @@ async def replay_rule(conn: AsyncConnection, rule_id: int) -> dict[str, Any]:
         before = await accrual_at_close(conn, rule["provider_id"], start, end, before_p)
         if rule["kind"] == "rate_effective_dating":
             async with conn.transaction(force_rollback=True):  # what-if: backdated rate, then roll back
-                await _rate_rule_row(conn, rule["provider_id"], rule["params"], "replay")
+                await apply_rate_override(conn, rule["provider_id"], rule["params"], "replay")
                 after = await accrual_at_close(conn, rule["provider_id"], start, end, before_p)
         else:
             after_p = await params_for(conn, rule["provider_id"], start, exclude_rule_ids={rule_id},
@@ -270,7 +262,7 @@ async def activate_rule(conn: AsyncConnection, rule_id: int, actor: str = "contr
         await cur.execute("SELECT * FROM learned_rules WHERE id = %s", (rule_id,))
         rule = await cur.fetchone()
     if rule["kind"] == "rate_effective_dating":
-        await _rate_rule_row(conn, rule["provider_id"], rule["params"], f"learned rule #{rule_id}")
+        await apply_rate_override(conn, rule["provider_id"], rule["params"], f"learned rule #{rule_id}")
     await conn.execute("UPDATE learned_rules SET status = 'active', activated_at = sim_now() WHERE id = %s",
                        (rule_id,))
     await audit(conn, actor, rule["source_case_id"], "rule_activated", {"rule_id": rule_id})

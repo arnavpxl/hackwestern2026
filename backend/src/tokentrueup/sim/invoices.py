@@ -38,6 +38,24 @@ COMPONENTS = [
 ]
 
 
+RATE_COLS = {"input_tokens": "input_rate", "output_tokens": "output_rate", "cached_tokens": "cached_rate",
+             "requests": "request_rate", "gpu_hours": "gpu_rate"}
+
+
+async def apply_rate_override(conn: AsyncConnection, provider: str, p: dict, note: str) -> None:
+    """Insert a price_changes row: rate for (model, component) effective from p['from'], other
+    components carried over from the rate in effect then. Used by the invoice simulator, rule
+    replay (inside a rolled-back savepoint) and rule activation."""
+    await conn.execute(
+        """INSERT INTO price_changes (ts, provider, model, input_rate, output_rate, cached_rate, request_rate, gpu_rate, note)
+            SELECT %(from)s, provider, model, input_rate, output_rate, cached_rate, request_rate, gpu_rate, %(note)s
+            FROM rate_at(%(provider)s, %(model)s, %(from)s)
+            ON CONFLICT (provider, model, ts) DO NOTHING""",
+        {"from": p["from"], "provider": provider, "model": p["model"], "note": note})
+    await conn.execute(f"UPDATE price_changes SET {RATE_COLS[p['component']]} = %s WHERE provider = %s AND model = %s"
+                       " AND ts = %s", (p["rate"], provider, p["model"], p["from"]))
+
+
 async def build_invoice(
     conn: AsyncConnection, provider: str, start: datetime, end: datetime, stealth: dict | None = None
 ) -> tuple[int, list[dict[str, Any]]]:
@@ -82,7 +100,15 @@ async def build_invoice(
         lines.append({"kind": "discount", "description": f"Cached input discount ({p.cached_discount_pct:g}%)",
                       "amount_cents": -round(cached_list * p.cached_discount_pct / 100)})
     usage_lines_total = sum(line["amount_cents"] for line in lines)
-    target = est.amount_cents + round(stealth_delta)
+    target = est.amount_cents
+    if stealth and stealth_delta:
+        # the provider applies its tier/batch discounts to the new rate too: re-price with it
+        first_hour = stealth_from.replace(minute=0, second=0, microsecond=0)
+        if first_hour < stealth_from:
+            first_hour += timedelta(hours=1)
+        async with conn.transaction(force_rollback=True):
+            await apply_rate_override(conn, provider, {**stealth, "from": first_hour}, "stealth (invoice sim)")
+            target = (await estimate_usage(conn, provider, start, end, end, p)).amount_cents
     remainder = target - usage_lines_total
     if abs(remainder) > 1:
         lines.append({"kind": "discount", "description": "Volume tier & batch discounts", "amount_cents": remainder})

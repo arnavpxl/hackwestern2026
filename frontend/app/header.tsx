@@ -12,8 +12,9 @@ const NAV = [
   ["/connections", "Connections"],
   ["/uth", "Under the hood"],
 ];
+const SIMULATION_SELECTION_KEY = "ttu-simulation-selection";
+const SCENARIO_OPTIONS = new Set(["runaway", "stealth_price", "duplicate_invoice", "price_change", "late_data"]);
 
-type DemoState = { phase: "detecting" | "investigate"; caseId?: number } | null;
 type RunawayAlert = {
   caseId: number;
   apiKeyId?: number;
@@ -32,22 +33,19 @@ export default function Header() {
   const [toast, setToast] = useState<string | null>(null);
   const [runawayAlert, setRunawayAlert] = useState<RunawayAlert | null>(null);
   const [demoOpen, setDemoOpen] = useState(false);
-  const [demo, setDemo] = useState<DemoState>(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [selectedSimulation, setSelectedSimulation] = useState("");
 
   useEffect(() => setNavOpen(false), [path]);
-
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("ttu-demo");
-      if (saved) setDemo(JSON.parse(saved));
-    } catch {}
+    const saved = localStorage.getItem(SIMULATION_SELECTION_KEY) ?? "";
+    if (SCENARIO_OPTIONS.has(saved)) setSelectedSimulation(saved);
   }, []);
 
-  const saveDemo = (next: DemoState) => {
-    setDemo(next);
-    if (next) localStorage.setItem("ttu-demo", JSON.stringify(next));
-    else localStorage.removeItem("ttu-demo");
+  const rememberSimulation = (value: string) => {
+    setSelectedSimulation(value);
+    if (value) localStorage.setItem(SIMULATION_SELECTION_KEY, value);
+    else localStorage.removeItem(SIMULATION_SELECTION_KEY);
   };
 
   // anomaly cases are opened by a job inside the database; it NOTIFYs, the API relays over SSE
@@ -70,7 +68,6 @@ export default function Header() {
               baselineHourlyCents: Number(calc.baseline_mean_cents),
             } : current);
           }).catch(() => {});
-          if (localStorage.getItem("ttu-demo")) saveDemo({ phase: "investigate", caseId: d.case_id });
         }
         if (d.event === "invoices_received") setToast("Provider invoices received");
       } catch {}
@@ -100,7 +97,7 @@ export default function Header() {
     setRunawayAlert(null);
     try {
       await post("/api/demo/start");
-      saveDemo({ phase: "detecting" });
+      rememberSimulation("runaway");
       setDemoOpen(false);
       setToast("Demo started: an AI agent is entering a runaway retry loop");
       router.push("/");
@@ -132,71 +129,31 @@ export default function Header() {
         <p className="mb-3 rounded-lg border border-amber-line bg-amber-bg px-2.5 py-2 text-[11px] leading-snug font-semibold text-amber">
           Synthetic data: every provider, key, invoice and dollar here is simulated
         </p>
-        <nav aria-label="Primary" className="flex flex-col gap-0.5">
-          {NAV.map(([href, label]) => (
-            <Link key={href} href={href} aria-current={active(href) ? "page" : undefined}
-              className={`tu-focus flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-sm ${active(href)
-                ? "border-line bg-surface font-semibold text-ink"
-                : "border-transparent text-ink-2 hover:bg-surface-2"}`}>
-              <span aria-hidden className="size-3.5 shrink-0 rounded-[3px] border-[1.5px] border-ink-3" />
-              {label}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="min-h-4 flex-1" />
-
-        {demo && (
-          <div className="mb-3 rounded-lg border border-green-2/30 bg-green-bg p-3 text-[13px] text-ink">
-            <span className="inline-block rounded-full bg-green px-2 py-0.5 text-[11px] font-semibold text-white">
-              DEMO · {demo.phase === "detecting" ? "DETECT" : "CASE"}
-            </span>
-            <p className="mt-2 font-semibold">
-              {demo.phase === "detecting" ? "Catch runaway AI spend" : "Investigate the detected anomaly"}
-            </p>
-            <p className="mt-1 text-xs text-ink-2">
-              {demo.phase === "detecting"
-                ? "A retry loop is driving one key to 80× normal usage. Watch TimescaleDB detect it automatically."
-                : "The database opened a case with the spike window, financial impact, and reproducible evidence."}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {demo.phase === "investigate" && demo.caseId
-                ? <Link className="tu-btn-primary px-2.5 py-1.5" href={`/cases/${demo.caseId}`}>Open case #{demo.caseId}</Link>
-                : path !== "/" && <Link className="tu-btn-secondary px-2.5 py-1.5" href="/">View live spend</Link>}
-              <button type="button" className="tu-focus rounded text-xs font-semibold text-green hover:underline" onClick={() => saveDemo(null)}>Exit demo</button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-2.5 border-t border-line pt-3.5">
-          <span className="flex items-center gap-1.5 px-2.5 text-xs text-ink-2" title={s?.llm_model ?? "deterministic fallback agents"}>
-            {live
-              ? <img src="/trueup/dot-live.svg" alt="" width={7} height={7} />
-              : <span aria-hidden className="size-[7px] rounded-full bg-ink-3" />}
-            {s ? (live ? "Model live" : `Agents: ${s.llm_mode ?? "?"}`) : "Agents: ?"}
-          </span>
+        <section aria-labelledby="simulation-controls" className="flex flex-col gap-2.5">
+          <h2 id="simulation-controls" className="px-1 text-[11px] font-semibold tracking-[0.1em] text-ink-3 uppercase">Simulation</h2>
           <div className="rounded-lg border border-line bg-surface px-2.5 py-2" title="sim clock">
             <div className="text-[13px] font-semibold text-ink tabular-nums">{s ? when(s.sim_now) : "connecting…"}</div>
             <div className="text-xs text-ink-3 tabular-nums">
               {s ? `${Math.round(s.ingest_eps ?? 0).toLocaleString()} ev/s` : " "}
             </div>
           </div>
-          {me && (
-            <div className="flex items-center justify-between gap-2 px-2.5 text-xs text-ink-2">
-              <span className="min-w-0 truncate">{me.name} · <span className="font-semibold text-ink">{me.role}</span></span>
-              <button type="button" className="tu-focus rounded font-semibold text-green hover:underline" onClick={signOut}>Sign out</button>
-            </div>
-          )}
           {allowed(me, "admin") && <div className="flex gap-2">
             {s && (s.paused
               ? <button type="button" className="tu-btn-secondary px-2.5 py-1.5" onClick={() => act("play", () => post("/api/sim/play"))}>▶ Play</button>
               : <button type="button" className="tu-btn-secondary px-2.5 py-1.5" onClick={() => act("pause", () => post("/api/sim/pause"))}>⏸ Pause</button>)}
-            <select aria-label="Simulate a scenario" className="tu-focus min-w-0 flex-1 rounded-lg border border-line-2 bg-surface px-2 py-1.5 text-[13px] text-ink" value="" disabled={!!busy}
+            <select aria-label="Simulate a scenario" className="tu-focus min-w-0 flex-1 rounded-lg border border-line-2 bg-surface px-2 py-1.5 text-[13px] text-ink" value={selectedSimulation} disabled={!!busy}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v.startsWith("ff:")) act("fast-forward", () => post("/api/sim-fast-forward", { target: v.slice(3) }));
-                else if (v === "reset") act("reset", () => post("/api/sim/reset"));
-                else if (v) act(v, () => post(`/api/scenario/${v}`));
+                if (v.startsWith("ff:")) {
+                  rememberSimulation("");
+                  act("fast-forward", () => post("/api/sim-fast-forward", { target: v.slice(3) }));
+                } else if (v === "reset") {
+                  rememberSimulation("");
+                  act("reset", () => post("/api/sim/reset"));
+                } else if (v) {
+                  rememberSimulation(v);
+                  act(v, () => post(`/api/scenario/${v}`));
+                }
               }}>
               <option value="">{busy ? `${busy}…` : "Simulate…"}</option>
               <option value="runaway">Runaway agent (support-triage-agent)</option>
@@ -210,15 +167,15 @@ export default function Header() {
             </select>
           </div>}
           {allowed(me, "admin") && (
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" className="tu-btn-secondary px-2.5 py-1.5" disabled={!!busy}
+            <div className="grid grid-cols-1 gap-2">
+              <button type="button" className="tu-btn-secondary w-full px-2.5 py-1.5" disabled={!!busy}
                 title="Clear the current run, rebuild a smooth normal last hour, and start live usage"
-                onClick={() => act("clean baseline", () => post("/api/sim/baseline"))}>
+                onClick={() => { rememberSimulation(""); act("clean baseline", () => post("/api/sim/baseline")); }}>
                 ↺ Clean baseline
               </button>
-              <button type="button" className="tu-btn-secondary px-2.5 py-1.5 text-red-700" disabled={!!busy || activeScenarios.length === 0}
+              <button type="button" className="tu-btn-secondary w-full px-2.5 py-1.5 text-red-700" disabled={!!busy || activeScenarios.length === 0}
                 title="Stop active scenarios; keep their usage and cases as evidence"
-                onClick={() => act("stop scenarios", () => post("/api/scenario/stop"))}>
+                onClick={() => { rememberSimulation(""); act("stop scenarios", () => post("/api/scenario/stop")); }}>
                 ■ Stop scenarios
               </button>
             </div>
@@ -232,6 +189,35 @@ export default function Header() {
             <button type="button" className="tu-btn-primary w-full" disabled={!!busy} onClick={() => setDemoOpen(true)}>
               <span aria-hidden>▶</span> Run product demo
             </button>
+          )}
+        </section>
+
+        <nav aria-label="Primary" className="mt-3 flex flex-col gap-0.5 border-t border-line pt-3">
+          {NAV.map(([href, label]) => (
+            <Link key={href} href={href} aria-current={active(href) ? "page" : undefined}
+              className={`tu-focus flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-sm ${active(href)
+                ? "border-line bg-surface font-semibold text-ink"
+                : "border-transparent text-ink-2 hover:bg-surface-2"}`}>
+              <span aria-hidden className="size-3.5 shrink-0 rounded-[3px] border-[1.5px] border-ink-3" />
+              {label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="min-h-4 flex-1" />
+
+        <div className="flex flex-col gap-2.5 border-t border-line pt-3.5">
+          <span className="flex items-center gap-1.5 px-2.5 text-xs text-ink-2" title={s?.llm_model ?? "deterministic fallback agents"}>
+            {live
+              ? <img src="/trueup/dot-live.svg" alt="" width={7} height={7} />
+              : <span aria-hidden className="size-[7px] rounded-full bg-ink-3" />}
+            {s ? (live ? "Model live" : `Agents: ${s.llm_mode ?? "?"}`) : "Agents: ?"}
+          </span>
+          {me && (
+            <div className="flex items-center justify-between gap-2 px-2.5 text-xs text-ink-2">
+              <span className="min-w-0 truncate">{me.name} · <span className="font-semibold text-ink">{me.role}</span></span>
+              <button type="button" className="tu-focus rounded font-semibold text-green hover:underline" onClick={signOut}>Sign out</button>
+            </div>
           )}
         </div>
       </div>

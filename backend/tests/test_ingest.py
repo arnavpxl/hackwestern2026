@@ -9,6 +9,7 @@ import pytest
 
 from tokentrueup import auth, connections, vault
 from tokentrueup.ingest import anthropic, sync
+from tokentrueup.ingest.common import ProviderError
 
 ADMIN_KEY = "sk-ant-admin-ingest-" + "x" * 30
 NOW = datetime(2026, 11, 21, 10, 30, tzinfo=UTC)  # sync end will be 10:00 (complete hours only)
@@ -58,6 +59,45 @@ async def test_rejected_key_error_never_contains_the_key():
         with pytest.raises(anthropic.ProviderError) as info:
             [r async for r in anthropic.fetch_usage(ADMIN_KEY, NOW - timedelta(hours=1), NOW, client=client)]
     assert "rejected" in str(info.value) and ADMIN_KEY not in str(info.value)
+
+
+async def test_openai_adapter_follows_paging_and_normalizes():
+    from tokentrueup.ingest import openai as openai_adapter
+
+    start = datetime(2026, 11, 21, 8, tzinfo=UTC)
+    end = datetime(2026, 11, 21, 10, tzinfo=UTC)
+    pages = {
+        None: {"data": [{"start_time": int(start.timestamp()), "results": [
+            {"model": "gpt-x", "project_id": "proj_1", "api_key_id": "key_1", "input_tokens": 300, "output_tokens": 20}]}],
+            "has_more": True, "next_page": "p2"},
+        "p2": {"data": [{"start_time": int((start + timedelta(hours=1)).timestamp()), "results": [
+            {"model": "gpt-x", "project_id": "proj_1", "api_key_id": "key_1", "input_tokens": 400, "output_tokens": 5}]}],
+            "has_more": False, "next_page": None},
+    }
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        assert request.headers["authorization"] == f"Bearer {ADMIN_KEY}"
+        return httpx.Response(200, json=pages[request.url.params.get("page")])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        rows = [r async for r in openai_adapter.fetch_usage(ADMIN_KEY, start, end, client=client)]
+    assert [r["input_tokens"] for r in rows] == [300, 400]
+    assert rows[0]["bucket"] == start and rows[0]["workspace_id"] == "proj_1" and rows[0]["provider_key_id"] == "key_1"
+    assert "bucket_width=1h" in str(seen[0].url) and "start_time" in str(seen[0].url)
+
+
+async def test_openai_rejected_key_message_is_readable_and_keyless():
+    from tokentrueup.ingest import openai as openai_adapter
+
+    def handler(request):
+        return httpx.Response(401, json={"error": "invalid"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ProviderError) as info:
+            [r async for r in openai_adapter.fetch_usage(ADMIN_KEY, NOW - timedelta(hours=1), NOW, client=client)]
+    assert "OpenAI rejected" in str(info.value) and ADMIN_KEY not in str(info.value)
 
 
 async def _connection(conn) -> int:

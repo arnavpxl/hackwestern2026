@@ -1,10 +1,12 @@
 "use client";
 import { useState } from "react";
 import { post, usd, useApi, when } from "@/lib/api";
+import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
 
 export default function Recon() {
   const { data, mutate } = useApi("/api/recon");
+  const me = useMe();
   const [busy, setBusy] = useState<string | null>(null);
   if (!data) return <div className="card">Loading…</div>;
   const act = async (label: string, path: string) => { setBusy(label); try { await post(path); } finally { setBusy(null); mutate(); } };
@@ -21,7 +23,7 @@ export default function Recon() {
             {current.length === 0 ? "None yet. Fast-forward to invoices from the Simulate menu." : `${current.length} received, ${pending} waiting to reconcile`}
           </div>
         </div>
-        <button className="btn-primary ml-auto" disabled={!pending || !!busy} onClick={() => act("recon", "/api/recon/run")}>
+        <button className="btn-primary ml-auto" disabled={!pending || !!busy || !allowed(me, "controller")} onClick={() => act("recon", "/api/recon/run")}>
           {busy === "recon" ? "Reconciling…" : "Reconcile"}
         </button>
       </div>
@@ -56,7 +58,7 @@ export default function Recon() {
               <div className="flex flex-wrap items-center gap-2">
                 <b>#{rule.id} {rule.kind.replace(/_/g, " ")}</b><span className="text-sm">{rule.provider_id}</span><Status s={rule.status} />
                 <span className="font-mono text-xs text-slate-500">{JSON.stringify(rule.params)}</span>
-                {rule.status === "proposed" && <span className="ml-auto flex gap-2">
+                {rule.status === "proposed" && allowed(me, "controller") && <span className="ml-auto flex gap-2">
                   <button className="btn" disabled={!!busy} onClick={() => act(`r${rule.id}`, `/api/rules/${rule.id}/replay`)}>Replay</button>
                   <button className="btn-primary" disabled={!!busy} onClick={() => act(`a${rule.id}`, `/api/rules/${rule.id}/activate`)}>Activate</button>
                   <button className="btn" disabled={!!busy} onClick={() => act(`x${rule.id}`, `/api/rules/${rule.id}/reject`)}>Reject</button>

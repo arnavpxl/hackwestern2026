@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { post, useApi, when } from "@/lib/api";
+import { allowed, useMe } from "../auth-gate";
 
 const mb = (b: number | null | undefined) => (b ? `${(b / 1e6).toLocaleString("en-US", { maximumFractionDigits: 1 })} MB` : "—");
 
@@ -9,7 +10,8 @@ export default function UnderTheHood() {
   const [race, setRace] = useState<any>(null);
   const [fresh, setFresh] = useState<any>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const go = async (k: string, fn: () => Promise<void>) => { setBusy(k); try { await fn(); } finally { setBusy(null); } };
+  const me = useMe();
+  const go =async (k: string, fn: () => Promise<void>) => { setBusy(k); try { await fn(); } finally { setBusy(null); } };
   if (!s) return <div className="card">Loading…</div>;
 
   return (
@@ -27,7 +29,7 @@ export default function UnderTheHood() {
         <div className="card">
           <div className="flex items-center gap-2">
             <h2 className="font-semibold">Query race: 30-day spend by team</h2>
-            <button className="btn-primary ml-auto" disabled={!!busy} onClick={() => go("race", async () => setRace(await post("/api/uth/race")))}>{busy === "race" ? "Racing…" : "Race"}</button>
+            <button className="btn-primary ml-auto" disabled={!!busy || !allowed(me, "admin")} onClick={() => go("race", async () => setRace(await post("/api/uth/race")))}>{busy === "race" ? "Racing…" : "Race"}</button>
           </div>
           {race ? (
             <div className="mt-3 space-y-2 text-sm">
@@ -40,7 +42,7 @@ export default function UnderTheHood() {
         <div className="card">
           <div className="flex items-center gap-2">
             <h2 className="font-semibold">Freshness probe</h2>
-            <button className="btn-primary ml-auto" disabled={!!busy} onClick={() => go("fresh", async () => setFresh(await post("/api/uth/freshness")))}>{busy === "fresh" ? "Probing…" : "Probe"}</button>
+            <button className="btn-primary ml-auto" disabled={!!busy || !allowed(me, "admin")} onClick={() => go("fresh", async () => setFresh(await post("/api/uth/freshness")))}>{busy === "fresh" ? "Probing…" : "Probe"}</button>
           </div>
           {fresh ? <p className="mt-3 text-sm">Inserted one event; visible in <code>usage_1m</code> after <b>{fresh.visible_after_ms} ms</b>. {fresh.via}.</p>
             : <p className="mt-3 text-sm text-slate-500">Inserts an event and times how long until the per-minute rollup shows it.</p>}

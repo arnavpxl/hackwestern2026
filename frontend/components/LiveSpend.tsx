@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { dollars, useApi } from "@/lib/api";
@@ -70,6 +71,11 @@ export default function LiveSpend() {
 
   return (
     <>
+      <div className="flex justify-end">
+        <Link href="/" className="tu-btn-secondary" aria-label="Leave the synthetic demo and return home">
+          Leave demo <span aria-hidden>→</span>
+        </Link>
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Month-to-date usage spend" value={dollars(mtd)} />
         <Stat label="Projected at month end" value={dollars(proj)} />

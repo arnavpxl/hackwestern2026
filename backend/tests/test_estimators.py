@@ -165,3 +165,43 @@ async def test_sql_detector_flags_spike(conn, period):
     quiet = await (await conn.execute("SELECT count(*) FROM scan_anomalies(%s)",
                                       (spike - timedelta(minutes=5),))).fetchone()
     assert quiet[0] == 0
+
+
+async def test_sql_detector_sees_raw_spike_before_minute_refresh(conn, period):
+    """The fast path must not wait for usage_1m to materialize a new spike."""
+    start, _ = period
+    spike_day = 15
+    for d in range(1, spike_day):
+        await insert_event(conn, hour(start, d, 1), "support-triage-agent", "nimbus-llm", "nimbus-pro",
+                           inp=333_333, cost=100.0)
+    spike = hour(start, spike_day, 1) + timedelta(minutes=20)
+    # Advance all aggregate watermarks before inserting the spike. It is therefore available
+    # only in usage_events, matching the visibility gap that delayed the live demo.
+    await refresh(conn, start, spike + timedelta(days=1))
+    for second in range(6):
+        await insert_event(conn, spike + timedelta(seconds=second), "support-triage-agent",
+                           "nimbus-llm", "nimbus-pro", inp=100_000, cost=5.0)
+
+    hits = await (await conn.execute(
+        "SELECT api_key_id, projected_hourly_cents, threshold_cents FROM scan_anomalies(%s)",
+        (spike + timedelta(seconds=5),))).fetchall()
+    assert len(hits) == 1
+    assert hits[0][0] == await key_id(conn, "support-triage-agent")
+    assert hits[0][1] > hits[0][2]
+
+
+async def test_spike_start_uses_recent_bounded_window(conn, period):
+    start, _ = period
+    kid = await key_id(conn, "support-triage-agent")
+    as_of = hour(start, 15, 1)
+    # Old raw history must not affect or expand the change-point scan.
+    await insert_event(conn, as_of - timedelta(minutes=45), "support-triage-agent",
+                       "nimbus-llm", "nimbus-pro", cost=500.0)
+    expected = as_of - timedelta(seconds=8)
+    for second in range(8):
+        await insert_event(conn, expected + timedelta(seconds=second), "support-triage-agent",
+                           "nimbus-llm", "nimbus-pro", cost=5.0)
+
+    detected = (await (await conn.execute(
+        "SELECT spike_start(%s, %s, %s, %s)", (kid, "nimbus-pro", 2_000.0, as_of))).fetchone())[0]
+    assert detected == expected

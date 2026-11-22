@@ -394,7 +394,7 @@ async def set_scenario(conn: AsyncConnection, patch: dict) -> dict:
     return row[0]
 
 
-async def scenario_runaway(conn: AsyncConnection, on: bool = True, key: str = RUNAWAY_KEY, mult: float = 80) -> dict:
+async def scenario_runaway(conn: AsyncConnection, on: bool = True, key: str = RUNAWAY_KEY, mult: float = 120) -> dict:
     state = await get_state(conn)
     return await set_scenario(conn, {"runaway": {"key": key, "mult": mult, "active": on,
                                                  "since": state["sim_now"].isoformat()}})
@@ -466,7 +466,7 @@ async def start_demo(conn: AsyncConnection) -> dict[str, Any]:
     scenario = {
         "runaway": {
             "key": RUNAWAY_KEY,
-            "mult": 80,
+            "mult": 120,
             "active": True,
             "since": state["sim_now"].isoformat(),
         },
@@ -489,8 +489,8 @@ async def start_demo(conn: AsyncConnection) -> dict[str, Any]:
         "configuration": {
             "name": "AI spend control loop",
             "hero_key": RUNAWAY_KEY,
-            "runaway_multiplier": 80,
-            "expected_detection_seconds": "5–15",
+            "runaway_multiplier": 120,
+            "expected_detection_seconds": "3–10",
             "reconciliation_provider": "nimbus-llm",
         },
     }

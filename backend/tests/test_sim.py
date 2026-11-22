@@ -39,8 +39,10 @@ async def test_start_demo_configures_canonical_story(monkeypatch):
     assert state["target_eps"] == 4000
     assert scenario["runaway"]["active"] is True
     assert scenario["runaway"]["key"] == "support-triage-agent"
+    assert scenario["runaway"]["mult"] == 120
     assert scenario["stealth_price"]["provider"] == "nimbus-llm"
     assert result["configuration"]["hero_key"] == "support-triage-agent"
+    assert result["configuration"]["expected_detection_seconds"] == "3–10"
 
 
 async def test_pause_freezes_clock_and_records_interval(conn):

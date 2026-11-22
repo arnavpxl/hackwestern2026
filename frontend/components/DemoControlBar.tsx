@@ -20,6 +20,7 @@ const TIME_JUMPS = [
 
 export default function DemoControlBar() {
   const { data: state, mutate } = useApi("/api/state", 1000);
+  const { data: emailStatus, mutate: mutateEmailStatus } = useApi("/api/demo-email-status", 5000);
   const me = useMe();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -81,7 +82,16 @@ export default function DemoControlBar() {
                 act("Fast-forward", () => post("/api/sim-fast-forward", { target: value.slice(3) }));
               } else {
                 remember(value);
-                act("Start scenario", () => post(`/api/scenario/${value}`));
+                act("Start scenario", async () => {
+                  const result = await post(`/api/scenario/${value}`);
+                  if (value === "runaway") {
+                    const alert = result?.email_alert;
+                    if (alert?.enrolled) setMessage(`Email alert armed for ${alert.recipient}`);
+                    else if (emailStatus?.eligible && !emailStatus?.configured) setMessage("Runaway started; SMTP email is not configured yet");
+                    mutateEmailStatus();
+                  }
+                  return result;
+                });
               }
             }} />
             <button type="button" className="tu-btn-ghost" disabled={!!busy}
@@ -98,6 +108,13 @@ export default function DemoControlBar() {
         {activeScenarios.length > 0 && <div className="mt-2 flex items-center gap-2 border-t border-line pt-2 text-[11px] text-red-700">
           <span>Running:</span>
           {activeScenarios.map(([name]) => name.replaceAll("_", " ")).join(", ")}
+        </div>}
+        {emailStatus && <div className="mt-2 border-t border-line pt-2 text-[11px] text-ink-3">
+          {emailStatus.eligible
+            ? emailStatus.configured
+              ? <>Runaway alerts will be emailed to <span className="font-medium text-ink-2">{emailStatus.recipient}</span>.</>
+              : "Runaway email alerts are unavailable until SMTP is configured."
+            : "Sign in with your own account before opening the demo to receive runaway email alerts."}
         </div>}
       </section>
 

@@ -53,10 +53,13 @@ export default function Header({ demoMode = false }: { demoMode?: boolean }) {
           }).catch(() => {});
         }
         if (d.event === "invoices_received") setToast("Provider invoices received");
+        if (d.event === "demo_email_sent" && Number(d.user_id) === me?.id) {
+          setToast("Runaway alert emailed to your account");
+        }
       } catch {}
     });
     return () => es.close();
-  }, [demoMode]);
+  }, [demoMode, me?.id]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 6000);

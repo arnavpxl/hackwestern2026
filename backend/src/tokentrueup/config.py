@@ -16,10 +16,23 @@ class Settings(BaseSettings):
     cookie_secure: bool = False  # set TTU_COOKIE_SECURE=true when served over HTTPS
     ttu_encryption_key: str = ""  # TTU_ENCRYPTION_KEY: master key for stored provider keys (see vault.py)
     web_origins: str ="http://localhost:3000,http://127.0.0.1:3000"  # comma-separated, for CORS with cookies
+    ttu_smtp_host: str = ""
+    ttu_smtp_port: int = 587
+    ttu_smtp_username: str = ""
+    ttu_smtp_password: str = ""
+    ttu_smtp_from: str = ""
+    ttu_smtp_message_stream: str = ""
+    ttu_smtp_starttls: bool = True
+    ttu_smtp_ssl: bool = False
+    ttu_app_url: str = "http://localhost:3000"
 
     @property
     def llm_enabled(self) -> bool:
         return bool(self.anthropic_api_key)
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.ttu_smtp_host and self.ttu_smtp_from)
 
 
 settings = Settings()

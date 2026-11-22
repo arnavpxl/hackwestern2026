@@ -20,7 +20,7 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from .. import auth, connected_spend, connections
+from .. import auth, connected_spend, connections, email_alerts
 from ..bench import metrics
 from ..config import settings
 from ..estimators.base import jsonable
@@ -70,6 +70,8 @@ async def lifespan(app: FastAPI):
     tasks = [asyncio.create_task(hub.listen())]
     if os.environ.get("TTU_SYNC_ENABLED", "1") == "1":
         tasks.append(asyncio.create_task(ingest_sync.run_scheduler(pool)))
+    if settings.email_enabled:
+        tasks.append(asyncio.create_task(email_alerts.run_worker(pool)))
     generator = world.LiveGenerator(pool)
     if os.environ.get("TTU_GENERATOR", "1") == "1":
         generator.start()
@@ -774,8 +776,26 @@ async def sim_fast_forward(ff: FastForward):
         return ok(await world.fast_forward(conn, to))
 
 
+@app.get("/api/demo-email-status", dependencies=VIEW)
+async def demo_email_status(user: CurrentUser):
+    eligible = user["email"] != "demo@tokentrueup.local"
+    async with pool.connection() as conn:
+        latest = await rows(
+            conn,
+            """SELECT case_id, status, sent_at, last_error
+               FROM demo_email_notifications WHERE user_id = %s ORDER BY id DESC LIMIT 1""",
+            (user["id"],),
+        )
+    return ok({
+        "eligible": eligible,
+        "configured": settings.email_enabled,
+        "recipient": user["email"] if eligible else None,
+        "latest": latest[0] if latest else None,
+    })
+
+
 @app.post("/api/scenario/{name}", dependencies=ADMIN)
-async def scenario(name: str, on: bool = True, key: str = world.RUNAWAY_KEY):
+async def scenario(name: str, user: CurrentUser, on: bool = True, key: str = world.RUNAWAY_KEY):
     async with pool.connection() as conn:
         fn = {
             "runaway": lambda: world.scenario_runaway(conn, on, key=key),
@@ -787,7 +807,24 @@ async def scenario(name: str, on: bool = True, key: str = world.RUNAWAY_KEY):
         }.get(name)
         if not fn:
             raise HTTPException(404)
-        return ok(await fn())
+        email_alert = {"enrolled": False, "configured": settings.email_enabled}
+        if name == "runaway" and on and user["email"] != "demo@tokentrueup.local":
+            key_row = await (await conn.execute("SELECT id FROM api_keys WHERE label = %s", (key,))).fetchone()
+            if key_row is not None and settings.email_enabled:
+                await conn.execute(
+                    """INSERT INTO demo_email_enrollments (user_id, api_key_id, started_at, expires_at)
+                       VALUES (%s, %s, now(), now() + interval '10 minutes')
+                       ON CONFLICT (user_id, api_key_id) DO UPDATE
+                       SET started_at = excluded.started_at, expires_at = excluded.expires_at""",
+                    (user["id"], key_row[0]),
+                )
+                await conn.commit()
+                email_alert = {"enrolled": True, "configured": True, "recipient": user["email"]}
+        elif name == "stop" or (name == "runaway" and not on):
+            await conn.execute("DELETE FROM demo_email_enrollments WHERE user_id = %s", (user["id"],))
+            await conn.commit()
+        result = await fn()
+        return ok({"scenario": result, "email_alert": email_alert})
 
 
 @app.get("/api/late-data-check", dependencies=VIEW)

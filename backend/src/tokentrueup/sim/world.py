@@ -396,6 +396,11 @@ async def set_scenario(conn: AsyncConnection, patch: dict) -> dict:
 
 async def scenario_runaway(conn: AsyncConnection, on: bool = True, key: str = RUNAWAY_KEY, mult: float = 120) -> dict:
     state = await get_state(conn)
+    # A scenario cannot generate an anomaly while the feed is paused. Treat the explicit
+    # runaway action as intent to run the simulation so the detector, popup, and email all
+    # observe the same newly generated spike.
+    if on and state["paused"]:
+        state = await set_paused(conn, False)
     return await set_scenario(conn, {"runaway": {"key": key, "mult": mult, "active": on,
                                                  "since": state["sim_now"].isoformat()}})
 

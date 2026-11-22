@@ -76,6 +76,7 @@ async def test_pause_freezes_clock_and_records_interval(conn):
 
 async def test_stop_scenarios_returns_to_normal_without_deleting_usage(conn):
     await world.scenario_runaway(conn)
+    assert (await world.get_state(conn))["paused"] is False
     await world.scenario_price_change(conn)
     before = (await (await conn.execute("SELECT count(*) FROM usage_events")).fetchone())[0]
 

@@ -14,6 +14,9 @@ const STYLE: Record<string, string> = {
   rejected: "bg-slate-100 text-ink-3",
 };
 
+const LABEL: Record<string, string> = { skipped_invoiced: "Already invoiced", needs_info: "Needs info" };
+
 export default function Status({ s }: { s: string }) {
-  return <span className={`pill ${STYLE[s] ?? "bg-slate-100 text-ink-2"}`}>{s.replace(/_/g, " ")}</span>;
+  const label = LABEL[s] ?? s.replace(/_/g, " ");
+  return <span className={`pill ${STYLE[s] ?? "bg-surface-2 text-ink-2"}`}>{label.charAt(0).toUpperCase() + label.slice(1)}</span>;
 }

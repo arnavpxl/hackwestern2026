@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { humanize } from "@/lib/api";
 import { useAppRoot } from "@/lib/routes";
 
 /** Figma Callout/Approval needed. Only rendered while a learned rule from this case is proposed. */
@@ -14,7 +15,7 @@ export default function ApprovalCallout({ rule, busy, onApprove }: {
       <div className="min-w-[240px] flex-1">
         <h2 id="approval-title" className="text-sm font-medium text-ink">Proposed rule #{rule.id} needs your approval</h2>
         <p className="mt-0.5 text-[13px] text-ink-2">
-          <span className="font-medium">{rule.kind.replace(/_/g, " ")}:</span> {rule.rationale}
+          <span className="font-medium">{humanize(rule.kind)}:</span> {rule.rationale}
           {r?.mape_before != null && r?.mape_after != null && <> Replay cuts mean absolute error from {r.mape_before}% to {r.mape_after}%.</>}
         </p>
       </div>

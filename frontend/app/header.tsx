@@ -17,7 +17,7 @@ type RunawayAlert = {
 
 export default function Header({ demoMode = false }: { demoMode?: boolean }) {
   const path = usePathname();
-  const { data: s } = useApi(demoMode ? "/api/state" : null, 1000);
+  const { data: s } = useApi(demoMode ? "/api/state" : null, 15_000);
   const me = useMe();
   const [toast, setToast] = useState<string | null>(null);
   const [runawayAlert, setRunawayAlert] = useState<RunawayAlert | null>(null);

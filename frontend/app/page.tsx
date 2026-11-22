@@ -1,10 +1,13 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Landing() {
   return (
     <main className="min-h-screen w-full bg-paper text-ink">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
-        <Link href="/" className="text-[13px] font-bold tracking-[0.22em]">TOKENTRUEUP</Link>
+        <Link href="/" aria-label="True Token Up home" className="tu-focus rounded">
+          <Image src="/tokentrueup-logo.svg" alt="True Token Up" width={420} height={200} priority className="h-auto w-[150px] sm:w-[168px]" />
+        </Link>
         <div className="flex items-center gap-2">
           <Link href="/login" className="tu-btn-ghost">Sign in</Link>
           <Link href="/signup" className="tu-btn-primary">Create account</Link>

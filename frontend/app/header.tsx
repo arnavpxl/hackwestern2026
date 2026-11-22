@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { API, get, post, usd, useApi, when } from "@/lib/api";
@@ -126,7 +127,10 @@ export default function Header({ demoMode = false }: { demoMode?: boolean }) {
   return (
     <aside className="sticky top-0 z-20 border-b border-line bg-paper min-[761px]:flex min-[761px]:h-screen min-[761px]:w-[232px] min-[761px]:shrink-0 min-[761px]:flex-col min-[761px]:border-r min-[761px]:border-b-0 min-[761px]:overflow-y-auto min-[761px]:px-3.5 min-[761px]:py-5">
       <div className="flex items-center justify-between px-4 py-3 min-[761px]:px-2 min-[761px]:pt-1 min-[761px]:pb-4">
-        <Link href="/" className="tu-focus rounded text-[13px] font-bold tracking-[0.22em] text-ink">TOKENTRUEUP</Link>
+        <Link href="/" className="tu-focus rounded" aria-label="True Token Up home">
+          <Image src="/tokentrueup-logo.svg" alt="True Token Up" width={420} height={200} priority
+            className="h-auto w-[128px] min-[761px]:w-[150px]" />
+        </Link>
         <button type="button" className="tu-btn-ghost px-2.5 py-1.5 min-[761px]:hidden" aria-expanded={navOpen}
           aria-controls="sidebar-body" aria-label={navOpen ? "Close navigation" : "Open navigation"}
           onClick={() => setNavOpen(!navOpen)}>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 200" width="420" height="200" fill="none">
+  <defs>
+    <clipPath id="logo-token-inner">
+      <circle cx="210" cy="68" r="27" />
+    </clipPath>
+  </defs>
+
+  
+  <circle cx="210" cy="68" r="37" fill="#F7F6F0" stroke="#1C2B22" stroke-width="4" />
+
+  
+  <g clip-path="url(#logo-token-inner)">
+    <rect x="176" y="34" width="68" height="68" fill="#B3D9EE" />
+    <polygon points="176,34 244,34 244,46 214,76 204,66 176,94" fill="#F3CEAF" />
+  </g>
+
+  
+  <circle cx="210" cy="68" r="27" stroke="#1C2B22" stroke-width="3.5" />
+  <g stroke="#1C2B22" stroke-width="3.5" stroke-linecap="round">
+    <line x1="210" y1="31" x2="210" y2="41" />
+    <line x1="173" y1="68" x2="183" y2="68" />
+    <line x1="210" y1="95" x2="210" y2="105" />
+    <line x1="237" y1="68" x2="247" y2="68" />
+    <line x1="184" y1="42" x2="191" y2="49" />
+    <line x1="229" y1="87" x2="236" y2="94" />
+  </g>
+
+  
+  <text x="210" y="160" text-anchor="middle" fill="#183B24" font-family="Inter, system-ui, -apple-system, BlinkMacSystemFont, &#39;Segoe UI&#39;, Roboto, sans-serif" font-size="36" font-weight="800" letter-spacing="2.5">
+    TRUE TOKEN UP
+  </text>
+</svg>

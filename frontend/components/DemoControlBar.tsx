@@ -23,7 +23,6 @@ export default function DemoControlBar() {
   const me = useMe();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [guideOpen, setGuideOpen] = useState(false);
   const [selection, setSelection] = useState("");
 
   useEffect(() => {
@@ -52,21 +51,6 @@ export default function DemoControlBar() {
       mutate();
     }
   };
-  const startGuide = async () => {
-    setBusy("Preparing demo");
-    try {
-      await post("/api/demo/start");
-      remember("runaway");
-      setGuideOpen(false);
-      setMessage("Guided demo started: watch for the automated spend alert");
-      mutate();
-    } catch (error) {
-      setMessage(`Could not start the demo: ${(error as Error).message}`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   const activeScenarios = Object.entries(state?.scenario ?? {}).filter(([, value]: [string, any]) =>
     value && (typeof value !== "object" || value.active !== false));
   const canControl = allowed(me, "admin");
@@ -109,9 +93,6 @@ export default function DemoControlBar() {
               onClick={() => { remember(""); act("Stop scenario", () => post("/api/scenario/stop")); }}>
               ■ Stop {activeScenarios.length === 1 ? "scenario" : "scenarios"}
             </button>}
-            <button type="button" className="tu-btn-primary" disabled={!!busy} onClick={() => setGuideOpen(true)}>
-              <span aria-hidden>▶</span> Guided demo
-            </button>
           </div>}
         </div>
         {activeScenarios.length > 0 && <div className="mt-2 flex items-center gap-2 border-t border-line pt-2 text-[11px] text-red-700">
@@ -121,7 +102,6 @@ export default function DemoControlBar() {
       </section>
 
       {message && <div role="status" className="fixed right-4 bottom-4 z-50 rounded-lg bg-ink px-4 py-2 text-sm text-white shadow-lg">{message}</div>}
-      {guideOpen && <GuidedDemoDialog busy={busy} close={() => setGuideOpen(false)} start={startGuide} />}
     </>
   );
 }
@@ -161,29 +141,4 @@ function ScenarioMenu({ value, busy, onSelect }: { value: string; busy: string |
       </button>)}
     </div>}
   </div>;
-}
-
-function GuidedDemoDialog({ busy, close, start }: { busy: string | null; close: () => void; start: () => void }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" role="dialog" aria-modal="true" aria-labelledby="guided-demo-title" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-    <div className="w-full max-w-2xl rounded-xl bg-surface p-6 shadow-2xl">
-      <div className="flex items-start gap-4">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-green text-xl text-white">▶</div>
-        <div className="flex-1"><div className="tu-eyebrow text-green">Guided product demo · about 3 minutes</div><h2 id="guided-demo-title" className="mt-1 font-serif text-3xl text-ink">See the AI spend control loop</h2><p className="mt-2 text-ink-2">Catch a runaway agent, close unbilled spend, then reconcile an invoice discrepancy.</p></div>
-        <button type="button" className="tu-focus rounded text-2xl leading-none text-ink-3 hover:text-ink" aria-label="Close" onClick={close}>×</button>
-      </div>
-      <ol className="mt-6 grid gap-3 sm:grid-cols-3">
-        <GuideStep number="1" label="Detect" title="Catch runaway spend" copy="An 80× retry loop is detected against the live baseline." />
-        <GuideStep number="2" label="Close" title="Accrue the month" copy="Usage, contracts, and purchases become evidence-backed cases." />
-        <GuideStep number="3" label="Learn" title="Reconcile invoices" copy="A price discrepancy becomes a replayable rule." />
-      </ol>
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-        <p className="text-xs text-ink-3">Starting resets the synthetic data and removes the current run.</p>
-        <div className="flex gap-2"><button type="button" className="tu-btn-secondary" onClick={close}>Cancel</button><button type="button" className="tu-btn-primary px-5" disabled={!!busy} onClick={start}>{busy ?? "Start guided demo"}</button></div>
-      </div>
-    </div>
-  </div>;
-}
-
-function GuideStep({ number, label, title, copy }: { number: string; label: string; title: string; copy: string }) {
-  return <li className="rounded-lg border border-line p-3"><div className="text-xs font-semibold text-green">{number} · {label.toUpperCase()}</div><div className="mt-1 font-semibold text-ink">{title}</div><p className="mt-1 text-sm text-ink-2">{copy}</p></li>;
 }

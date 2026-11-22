@@ -1,11 +1,22 @@
 ﻿"use client";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { post, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
 import { useAppRoot } from "@/lib/routes";
 import LoadingState from "@/components/LoadingState";
+
+const AUTO_SYNC_AFTER_MS = 60_000;
+
+function syncSummary(r: any, automatic = false) {
+  const prefix = automatic ? "Automatic sync" : "Sync";
+  return r.errors
+    ? `${prefix} finished with ${r.errors} error${r.errors === 1 ? "" : "s"}. ${r.rows} hourly rows imported.`
+    : r.rows > 0
+      ? `${prefix} imported ${r.rows} hourly rows across ${r.connections} connection${r.connections === 1 ? "" : "s"}.`
+      : `${prefix} complete. All ${r.connections} connection${r.connections === 1 ? " is" : "s are"} up to date.`;
+}
 
 export default function Connections() {
   const root = useAppRoot();
@@ -18,6 +29,45 @@ export default function Connections() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [keyInputActive, setKeyInputActive] = useState(false);
+  const [syncCheck, setSyncCheck] = useState(0);
+  const syncInFlight = useRef(false);
+  const lastSyncAttemptAt = useRef(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setSyncCheck((value) => value + 1), 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!data || !canEdit || busy || syncInFlight.current) return;
+    const connected = data.connections.filter((connection: any) => connection.status === "connected");
+    if (!connected.length) return;
+
+    const now = Date.now();
+    const stale = connected.some((connection: any) => {
+      if (!connection.last_sync_at) return true;
+      const syncedAt = new Date(connection.last_sync_at).getTime();
+      return !Number.isFinite(syncedAt) || now - syncedAt >= AUTO_SYNC_AFTER_MS;
+    });
+    // SWR refreshes this page every five seconds. This local timestamp prevents
+    // those refreshes (and React Strict Mode) from starting duplicate syncs.
+    if (!stale || now - lastSyncAttemptAt.current < AUTO_SYNC_AFTER_MS) return;
+
+    syncInFlight.current = true;
+    lastSyncAttemptAt.current = now;
+    setBusy(true);
+    setError(null);
+    setNotice("Syncing connected providers automatically…");
+    void post("/api/connections/sync")
+      .then((result) => setNotice(syncSummary(result, true)))
+      .catch((err) => setError(`Automatic sync failed: ${(err as Error).message}`))
+      .finally(async () => {
+        await mutate();
+        syncInFlight.current = false;
+        setBusy(false);
+      });
+  }, [busy, canEdit, data, mutate, syncCheck]);
+
   if (!data) return <LoadingState label="Loading connections" detail="Checking your provider connections and sync status…" />;
 
   // The key is sent once, then the field is cleared so it does not stay on screen.
@@ -53,20 +103,20 @@ export default function Connections() {
   };
 
   const syncAll = async () => {
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
+    lastSyncAttemptAt.current = Date.now();
     setError(null);
     setNotice(null);
     setBusy(true);
     try {
       const r = await post("/api/connections/sync");
-      setNotice(r.errors
-        ? `Sync finished with ${r.errors} error${r.errors === 1 ? "" : "s"}. ${r.rows} hourly rows imported.`
-        : r.rows > 0
-          ? `Synced ${r.rows} hourly rows across ${r.connections} connection${r.connections === 1 ? "" : "s"}.`
-          : `All ${r.connections} connection${r.connections === 1 ? " is" : "s are"} already up to date.`);
-      mutate();
+      setNotice(syncSummary(r));
+      await mutate();
     } catch (err) {
       setError((err as Error).message);
     } finally {
+      syncInFlight.current = false;
       setBusy(false);
     }
   };
@@ -89,7 +139,7 @@ export default function Connections() {
           <div><h1 className="text-lg font-semibold">Provider connections</h1>
         <p className="mt-1 text-sm text-slate-600">
           Connect a provider so usage and cost data can be pulled in. Keys are encrypted when saved and never shown
-          again; only the last four characters are displayed. Connected keys sync automatically every hour.
+          again; only the last four characters are displayed. This page automatically checks connected providers when opened and once a minute while it remains open.
         </p>
           </div>
           {canEdit && <button type="button" className="btn-primary" disabled={busy || !data.connections.some((c: any) => c.status === "connected")} onClick={syncAll}>

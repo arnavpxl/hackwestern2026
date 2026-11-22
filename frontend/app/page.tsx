@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import LandingActions from "@/components/LandingActions";
+import LandingSpendPreview from "@/components/LandingSpendPreview";
 
 export default function Landing() {
   return (
@@ -22,20 +23,8 @@ export default function Landing() {
           </div>
           <p className="mt-4 text-xs text-ink-3">The demo uses synthetic providers, credentials, usage, invoices, and spend.</p>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-line bg-surface p-3 shadow-[0_24px_80px_rgba(22,33,27,0.12)]">
-          <div className="rounded-xl border border-line bg-slate-50 p-5">
-            <div className="flex items-center justify-between"><span className="font-semibold">Spend per minute</span><span className="pill bg-green-bg text-green">Live</span></div>
-            <div className="mt-8 flex h-64 items-end gap-2 border-b border-l border-slate-300 px-3">
-              {[31,34,32,36,35,38,37,39,42,40,43,44,46,45,49,47,51,55,52,58,56,62,60,66].map((height, i) => (
-                <div key={i} className="min-w-0 flex-1 rounded-t bg-green/80" style={{ height: `${height}%` }} />
-              ))}
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              {[["Month to date", "$184,290"], ["Current burn", "$391/h"], ["Open cases", "3"]].map(([label, value]) => (
-                <div key={label} className="rounded-lg border border-line bg-white p-3"><div className="text-[10px] uppercase tracking-wide text-ink-3">{label}</div><div className="mt-1 font-semibold">{value}</div></div>
-              ))}
-            </div>
-          </div>
+        <div className="overflow-hidden rounded-2xl border border-line bg-slate-50 p-3 shadow-[0_24px_80px_rgba(22,33,27,0.12)]">
+          <LandingSpendPreview />
         </div>
       </section>
     </main>

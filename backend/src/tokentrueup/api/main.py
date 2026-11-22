@@ -28,6 +28,7 @@ from ..ingest import mapping as ingest_mapping
 from ..ingest import sync as ingest_sync
 from ..orchestrator import close, recon
 from ..sim import world
+from ..sim.catalog import PROVIDERS as SYNTHETIC_PROVIDERS
 from ..sim.profiles import month_start
 
 log = logging.getLogger("tokentrueup.api")
@@ -42,7 +43,9 @@ class Hub:
     async def listen(self) -> None:
         while True:
             try:
-                async with await psycopg.AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+                async with await psycopg.AsyncConnection.connect(
+                    settings.database_url, autocommit=True
+                ) as conn:
                     await conn.execute("LISTEN cases")
                     async for n in conn.notifies():
                         for q in list(self.subs):
@@ -79,8 +82,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="TokenTrueUp", lifespan=lifespan)
 # Only the web app's origins may call the API with cookies (a wildcard origin cannot be used with credentials).
-app.add_middleware(CORSMiddleware, allow_origins=settings.web_origins.split(","), allow_credentials=True,
-                   allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.web_origins.split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 async def current_user(request: Request) -> dict:
@@ -102,6 +110,7 @@ def require(role: str):
         if not auth.has_role(user["role"], role):
             raise HTTPException(403, f"this needs the {role} role")
         return user
+
     return check
 
 
@@ -123,6 +132,39 @@ async def rows(conn, sql: str, params: Any = None) -> list[dict]:
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(sql, params)
         return await cur.fetchall()
+
+
+SYNTHETIC_PROVIDER_IDS = tuple(provider[0] for provider in SYNTHETIC_PROVIDERS)
+
+
+async def synthetic_key_rows(conn, period: datetime, end: datetime) -> list[dict]:
+    """Spend metadata for demo-owned keys only; never returns key names or connected-workspace keys."""
+    return await rows(
+        conn,
+        """
+        WITH mtd AS (
+          SELECT api_key_id, sum(cost_cents) AS mtd FROM usage_1d_cost
+          WHERE bucket >= %(p)s AND bucket < LEAST(sim_now(), %(e)s) GROUP BY 1),
+        rate AS (
+          SELECT api_key_id, sum(cost_cents) / 24.0 AS per_hour FROM usage_1h_cost
+          WHERE bucket >= sim_now() - interval '24 hours' AND bucket < sim_now() GROUP BY 1),
+        last5 AS (
+          SELECT api_key_id, sum(cost_estimate_cents) * 12 AS run_rate_hour FROM usage_1m
+          WHERE bucket > sim_now() - interval '5 minutes' GROUP BY 1)
+        SELECT k.id, k.provider_id, t.name AS team, o.name AS owner,
+               round(coalesce(m.mtd, 0) / 100, 2) AS mtd_dollars,
+               round(coalesce(r.per_hour, 0) / 100, 2) AS avg_hourly_24h,
+               round(coalesce(l.run_rate_hour, 0)::numeric / 100, 2) AS run_rate_hourly,
+               round((coalesce(m.mtd, 0) + coalesce(r.per_hour, 0)
+                      * GREATEST(0, extract(epoch FROM (%(e)s::timestamptz - sim_now())) / 3600)) / 100, 2)
+                 AS projected_month_end
+        FROM api_keys k JOIN teams t ON t.id = k.team_id LEFT JOIN owners o ON o.id = k.owner_id
+        LEFT JOIN mtd m ON m.api_key_id = k.id LEFT JOIN rate r ON r.api_key_id = k.id
+        LEFT JOIN last5 l ON l.api_key_id = k.id
+        WHERE k.provider_id = ANY(%(providers)s)
+        ORDER BY mtd_dollars DESC""",
+        {"p": period, "e": end, "providers": list(SYNTHETIC_PROVIDER_IDS)},
+    )
 
 
 # ------------------------------------------------------------------ accounts & sessions
@@ -161,8 +203,15 @@ async def login(body: Login, response: Response):
         login_guard.clear(email)
         token = await auth.create_session(conn, user["id"])
         await conn.commit()
-    response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
-                        max_age=int(auth.SESSION_TTL.total_seconds()), path="/")
+    response.set_cookie(
+        auth.COOKIE,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=int(auth.SESSION_TTL.total_seconds()),
+        path="/",
+    )
     return ok(user)
 
 
@@ -179,8 +228,15 @@ async def signup(body: Signup, response: Response):
         token = await auth.create_session(conn, uid)
         await conn.commit()
     user = {"id": uid, "email": body.email.strip().lower(), "name": body.name.strip(), "role": "admin"}
-    response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
-                        max_age=int(auth.SESSION_TTL.total_seconds()), path="/")
+    response.set_cookie(
+        auth.COOKIE,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=int(auth.SESSION_TTL.total_seconds()),
+        path="/",
+    )
     return ok(user)
 
 
@@ -204,8 +260,15 @@ async def demo_session(response: Response):
                 user = {"id": uid, "email": email, "name": "Demo visitor", "role": "admin"}
         token = await auth.create_session(conn, user["id"])
         await conn.commit()
-    response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=settings.cookie_secure,
-                        max_age=int(auth.SESSION_TTL.total_seconds()), path="/")
+    response.set_cookie(
+        auth.COOKIE,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=int(auth.SESSION_TTL.total_seconds()),
+        path="/",
+    )
     return ok(user)
 
 
@@ -270,9 +333,16 @@ async def connections_list(user: CurrentUser):
 async def connection_add(body: NewConnection, user: CurrentUser):
     async with pool.connection() as conn:
         try:
-            cid = await connections.add_connection(conn, user["id"], user["email"], provider_id=body.provider_id,
-                                                   label=body.label, team_id=body.team_id, key_kind=body.key_kind,
-                                                   key=body.key)
+            cid = await connections.add_connection(
+                conn,
+                user["id"],
+                user["email"],
+                provider_id=body.provider_id,
+                label=body.label,
+                team_id=body.team_id,
+                key_kind=body.key_kind,
+                key=body.key,
+            )
         except ValueError as e:
             raise HTTPException(400, str(e)) from None
         except RuntimeError as e:
@@ -334,8 +404,14 @@ async def connection_map_key(connection_id: int, body: MapKey, user: CurrentUser
     async with pool.connection() as conn:
         try:
             api_key_id = await ingest_mapping.map_key(
-                conn, user["email"], connection_id, provider_key_id=body.provider_key_id,
-                workspace_id=body.workspace_id, api_key_id=body.api_key_id, new_key=body.new_key)
+                conn,
+                user["email"],
+                connection_id,
+                provider_key_id=body.provider_key_id,
+                workspace_id=body.workspace_id,
+                api_key_id=body.api_key_id,
+                new_key=body.new_key,
+            )
         except LookupError:
             raise HTTPException(404, "no such connection") from None
         except ValueError as e:
@@ -349,8 +425,13 @@ async def connection_map_key(connection_id: int, body: MapKey, user: CurrentUser
 @app.post("/api/connections/{connection_id}/mappings/remove", dependencies=ADMIN)
 async def connection_unmap_key(connection_id: int, body: UnmapKey, user: CurrentUser):
     async with pool.connection() as conn:
-        await ingest_mapping.unmap_key(conn, user["email"], connection_id, provider_key_id=body.provider_key_id,
-                                       workspace_id=body.workspace_id)
+        await ingest_mapping.unmap_key(
+            conn,
+            user["email"],
+            connection_id,
+            provider_key_id=body.provider_key_id,
+            workspace_id=body.workspace_id,
+        )
         await conn.commit()
     return ok({"removed": True})
 
@@ -368,6 +449,7 @@ async def connection_revoke(connection_id: int, user: CurrentUser):
 
 # ------------------------------------------------------------------ state & live spend
 
+
 @app.get("/api/state", dependencies=VIEW)
 async def state():
     async with pool.connection() as conn:
@@ -383,7 +465,9 @@ async def spend_live(minutes: int = 60):
         s = await world.get_state(conn)
         period = datetime.combine(s["close_period"], datetime.min.time(), s["sim_now"].tzinfo)
         end = month_start(period, 1)
-        series = await rows(conn, """
+        series = await rows(
+            conn,
+            """
             SELECT u.bucket, t.name AS team,
                    round(sum(u.cost_estimate_cents)::numeric / 100 *
                      CASE WHEN u.bucket = time_bucket('1 minute', sim_now())
@@ -392,40 +476,40 @@ async def spend_live(minutes: int = 60):
                    sum(u.events) AS events
             FROM usage_1m u JOIN api_keys k ON k.id = u.api_key_id JOIN teams t ON t.id = k.team_id
             WHERE u.bucket > sim_now() - make_interval(mins => %s) AND u.bucket <= sim_now()
-            GROUP BY 1, 2 ORDER BY 1""", (minutes,))
-        pauses = await rows(conn, """
+            GROUP BY 1, 2 ORDER BY 1""",
+            (minutes,),
+        )
+        pauses = await rows(
+            conn,
+            """
             SELECT sim_at, real_started_at, real_ended_at,
                    extract(epoch FROM (coalesce(real_ended_at, now()) - real_started_at)) AS duration_seconds
             FROM sim_pause_intervals
             WHERE sim_at > sim_now() - make_interval(mins => %s) AND sim_at <= sim_now()
-            ORDER BY sim_at""", (minutes,))
-        daily = await rows(conn, """
+            ORDER BY sim_at""",
+            (minutes,),
+        )
+        daily = await rows(
+            conn,
+            """
             SELECT c.bucket::date AS day, t.name AS team, round(sum(c.cost_cents) / 100, 2) AS dollars
             FROM usage_1d_cost c JOIN api_keys k ON k.id = c.api_key_id JOIN teams t ON t.id = k.team_id
-            WHERE c.bucket >= %s AND c.bucket < LEAST(sim_now(), %s) GROUP BY 1, 2 ORDER BY 1""", (period, end))
-        keys = await rows(conn, """
-            WITH mtd AS (
-              SELECT api_key_id, sum(cost_cents) AS mtd FROM usage_1d_cost
-              WHERE bucket >= %(p)s AND bucket < LEAST(sim_now(), %(e)s) GROUP BY 1),
-            rate AS (
-              SELECT api_key_id, sum(cost_cents) / 24.0 AS per_hour FROM usage_1h_cost
-              WHERE bucket >= sim_now() - interval '24 hours' AND bucket < sim_now() GROUP BY 1),
-            last5 AS (
-              SELECT api_key_id, sum(cost_estimate_cents) * 12 AS run_rate_hour FROM usage_1m
-              WHERE bucket > sim_now() - interval '5 minutes' GROUP BY 1)
-            SELECT k.id, k.label, k.provider_id, t.name AS team, o.name AS owner,
-                   round(coalesce(m.mtd, 0) / 100, 2) AS mtd_dollars,
-                   round(coalesce(r.per_hour, 0) / 100, 2) AS avg_hourly_24h,
-                   round(coalesce(l.run_rate_hour, 0)::numeric / 100, 2) AS run_rate_hourly,
-                   round((coalesce(m.mtd, 0) + coalesce(r.per_hour, 0)
-                          * GREATEST(0, extract(epoch FROM (%(e)s::timestamptz - sim_now())) / 3600)) / 100, 2)
-                     AS projected_month_end
-            FROM api_keys k JOIN teams t ON t.id = k.team_id LEFT JOIN owners o ON o.id = k.owner_id
-            LEFT JOIN mtd m ON m.api_key_id = k.id LEFT JOIN rate r ON r.api_key_id = k.id
-            LEFT JOIN last5 l ON l.api_key_id = k.id ORDER BY mtd_dollars DESC""", {"p": period, "e": end})
-        return ok({"series": series, "pauses": pauses, "daily": daily, "keys": keys, "sim_now": s["sim_now"],
-                   "paused": s["paused"],
-                   "period": s["close_period"], "period_end": end})
+            WHERE c.bucket >= %s AND c.bucket < LEAST(sim_now(), %s) GROUP BY 1, 2 ORDER BY 1""",
+            (period, end),
+        )
+        keys = await synthetic_key_rows(conn, period, end)
+        return ok(
+            {
+                "series": series,
+                "pauses": pauses,
+                "daily": daily,
+                "keys": keys,
+                "sim_now": s["sim_now"],
+                "paused": s["paused"],
+                "period": s["close_period"],
+                "period_end": end,
+            }
+        )
 
 
 @app.get("/api/spend/connected", dependencies=VIEW)
@@ -436,6 +520,7 @@ async def spend_connected(user: CurrentUser, hours: int = 168):
 
 
 # ------------------------------------------------------------------ close & cases
+
 
 @app.post("/api/close/run", dependencies=CONTROL)
 async def close_run():
@@ -448,11 +533,15 @@ async def close_summary():
     async with pool.connection() as conn:
         s = await world.get_state(conn)
         pol = await close.policy(conn)
-        cases = await rows(conn, """
+        cases = await rows(
+            conn,
+            """
             SELECT c.id, c.type, c.status, c.title, c.provider_id, c.estimate_cents, c.confidence, c.opened_at,
                    c.approved_by, c.detection_latency_ms, k.label AS key_label
             FROM obligation_cases c LEFT JOIN api_keys k ON k.id = c.api_key_id
-            WHERE c.period = %s ORDER BY c.type, c.estimate_cents DESC NULLS LAST""", (s["close_period"],))
+            WHERE c.period = %s ORDER BY c.type, c.estimate_cents DESC NULLS LAST""",
+            (s["close_period"],),
+        )
         accrual = [c for c in cases if c["type"] != "anomaly" and c["status"] != "skipped_invoiced"]
         by_status: dict[str, int] = {}
         for c in cases:
@@ -460,31 +549,59 @@ async def close_summary():
         by_type: dict[str, int] = {}
         for c in accrual:
             by_type[c["type"]] = by_type.get(c["type"], 0) + int(c["estimate_cents"] or 0)
-        return ok({"period": s["close_period"], "sim_now": s["sim_now"], "materiality_cents": pol["materiality_cents"],
-                   "accrued_cents": sum(int(c["estimate_cents"] or 0) for c in accrual),
-                   "approved_cents": sum(int(c["estimate_cents"] or 0) for c in accrual
-                                         if c["status"] in ("approved", "reconciled")),
-                   "by_status": by_status, "by_type_cents": by_type, "cases": cases})
+        return ok(
+            {
+                "period": s["close_period"],
+                "sim_now": s["sim_now"],
+                "materiality_cents": pol["materiality_cents"],
+                "accrued_cents": sum(int(c["estimate_cents"] or 0) for c in accrual),
+                "approved_cents": sum(
+                    int(c["estimate_cents"] or 0)
+                    for c in accrual
+                    if c["status"] in ("approved", "reconciled")
+                ),
+                "by_status": by_status,
+                "by_type_cents": by_type,
+                "cases": cases,
+            }
+        )
 
 
 @app.get("/api/cases/{case_id}", dependencies=VIEW)
 async def case_detail(case_id: int):
     async with pool.connection() as conn:
-        c = await rows(conn, """SELECT c.*, k.label AS key_label, p.name AS provider_name FROM obligation_cases c
+        c = await rows(
+            conn,
+            """SELECT c.*, k.label AS key_label, p.name AS provider_name FROM obligation_cases c
                                 LEFT JOIN api_keys k ON k.id = c.api_key_id JOIN providers p ON p.id = c.provider_id
-                                WHERE c.id = %s""", (case_id,))
+                                WHERE c.id = %s""",
+            (case_id,),
+        )
         if not c:
             raise HTTPException(404)
-        return ok({
-            "case": c[0],
-            "evidence": await rows(conn, "SELECT * FROM evidence WHERE case_id = %s ORDER BY id", (case_id,)),
-            "outreach": await rows(conn, """SELECT m.*, o.name AS owner_name, o.email FROM outreach_messages m
+        return ok(
+            {
+                "case": c[0],
+                "evidence": await rows(
+                    conn, "SELECT * FROM evidence WHERE case_id = %s ORDER BY id", (case_id,)
+                ),
+                "outreach": await rows(
+                    conn,
+                    """SELECT m.*, o.name AS owner_name, o.email FROM outreach_messages m
                                             LEFT JOIN owners o ON o.id = m.owner_id WHERE case_id = %s ORDER BY m.id""",
-                                   (case_id,)),
-            "audit": await rows(conn, "SELECT * FROM audit_log WHERE case_id = %s ORDER BY id", (case_id,)),
-            "snapshots": await rows(conn, """SELECT ts, estimate_cents, confidence, reason FROM accrual_snapshots
-                                             WHERE case_id = %s ORDER BY ts""", (case_id,)),
-        })
+                    (case_id,),
+                ),
+                "audit": await rows(
+                    conn, "SELECT * FROM audit_log WHERE case_id = %s ORDER BY id", (case_id,)
+                ),
+                "snapshots": await rows(
+                    conn,
+                    """SELECT ts, estimate_cents, confidence, reason FROM accrual_snapshots
+                                             WHERE case_id = %s ORDER BY ts""",
+                    (case_id,),
+                ),
+            }
+        )
 
 
 class Reply(BaseModel):
@@ -515,32 +632,46 @@ async def case_rerun(case_id: int, query_index: int):
         if not calc or query_index >= len(calc.get("queries", [])):
             raise HTTPException(404)
         q = calc["queries"][query_index]
-        params = {k: Jsonb(v) if isinstance(v, list | dict) else v for k, v in q["params"].items()
-                  if f"%({k})s" in q["sql"]}
+        params = {
+            k: Jsonb(v) if isinstance(v, list | dict) else v
+            for k, v in q["params"].items()
+            if f"%({k})s" in q["sql"]
+        }
         t = asyncio.get_running_loop().time()
         result = jsonable(await rows(conn, q["sql"], params))
         ms = (asyncio.get_running_loop().time() - t) * 1000
-        return ok({"rows": result, "ms": round(ms, 2), "matches_stored": result == q["rows"], "stored": q["rows"]})
+        return ok(
+            {"rows": result, "ms": round(ms, 2), "matches_stored": result == q["rows"], "stored": q["rows"]}
+        )
 
 
 @app.get("/api/approvals", dependencies=VIEW)
 async def approvals():
     async with pool.connection() as conn:
-        return ok(await rows(conn, """SELECT c.*, k.label AS key_label FROM obligation_cases c
+        return ok(
+            await rows(
+                conn,
+                """SELECT c.*, k.label AS key_label FROM obligation_cases c
                                       LEFT JOIN api_keys k ON k.id = c.api_key_id
-                                      WHERE status = 'pending_approval' ORDER BY estimate_cents DESC"""))
+                                      WHERE status = 'pending_approval' ORDER BY estimate_cents DESC""",
+            )
+        )
 
 
 # ------------------------------------------------------------------ reconciliation & rules
+
 
 @app.get("/api/recon", dependencies=VIEW)
 async def recon_view():
     async with pool.connection() as conn:
         s = await world.get_state(conn)
-        invoices = await rows(conn, """SELECT id, provider_id, invoice_no, period_start, amount_cents, received_at,
+        invoices = await rows(
+            conn,
+            """SELECT id, provider_id, invoice_no, period_start, amount_cents, received_at,
                                               status, is_duplicate_of, recon, lines
                                        FROM ap_invoices WHERE received_at <= sim_now()
-                                       ORDER BY period_start DESC, provider_id, id""")
+                                       ORDER BY period_start DESC, provider_id, id""",
+        )
         rules = await rows(conn, "SELECT * FROM learned_rules ORDER BY id")
         return ok({"period": s["close_period"], "invoices": invoices, "rules": rules})
 
@@ -574,6 +705,7 @@ async def rule_reject(rule_id: int):
 
 
 # ------------------------------------------------------------------ simulator
+
 
 class SimSpeed(BaseModel):
     eps: int
@@ -652,6 +784,7 @@ async def late_data_check(hour: datetime):
 
 
 # ------------------------------------------------------------------ under the hood
+
 
 @app.get("/api/uth/stats", dependencies=VIEW)
 async def uth_stats():

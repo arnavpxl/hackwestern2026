@@ -78,14 +78,12 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
         {/* ------------------------------------------------ header */}
         <header className="space-y-2.5">
           <nav aria-label="Breadcrumb">
-            <ol className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium tracking-[0.12em] text-ink-3 uppercase">
+            <ol className="flex flex-wrap items-center gap-1.5 text-xs text-ink-3">
               <li><Link href={`${root}/close`} className="tu-focus rounded hover:text-ink">Close</Link></li>
               <li aria-hidden>/</li>
               <li>{TYPE_LABEL[c.type] ?? c.type}</li>
               <li aria-hidden>/</li>
-              <li className="font-mono tracking-normal normal-case">Case #{c.id}</li>
-              <li aria-hidden>/</li>
-              <li aria-current="page">Verification</li>
+              <li aria-current="page">Case #{c.id}</li>
             </ol>
           </nav>
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -95,14 +93,13 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
               </h1>
               <ul className="flex flex-wrap gap-2" aria-label="Case details">
                 <li><Pill variant="neutral">{TYPE_LABEL[c.type] ?? c.type}</Pill></li>
-                <li><Pill variant="neutral" mono>{String(c.provider_id).toUpperCase()}</Pill></li>
+                <li><Pill variant="neutral">{c.provider_id}</Pill></li>
                 {c.key_label && <li><Pill variant="neutral" mono>{c.key_label}</Pill></li>}
                 <li><Pill variant="neutral">{periodRange(c.period)}</Pill></li>
-                <li><Pill variant="neutral">Opened {when(c.opened_at)}</Pill></li>
               </ul>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="tu-btn-secondary" onClick={downloadJson}>Workpaper JSON</button>
+              <button type="button" className="tu-btn-ghost" onClick={downloadJson}>Download JSON</button>
               {c.status === "pending_approval" && allowed(me, "controller") && (
                 <button type="button" className="tu-btn-primary" disabled={!!busy}
                   onClick={() => act("approve", () => post(`/api/cases/${id}/approve`))}>
@@ -135,19 +132,18 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
               <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-[10px] border border-line bg-surface-2 px-4 py-3">
                 <StatusIcon tone={calc ? "done" : "pending"} />
                 <p className="min-w-[200px] flex-1 text-[13px] text-ink-2">
-                  <span className="font-semibold text-ink">{calc ? `Received from the ${String(calc.kind ?? c.type).replace(/_/g, "-")} estimator` : "Waiting for the estimator"}</span>
-                  {" · "}<span className="font-mono text-xs">CASE-{c.id}</span>
-                  {calc && <> · {queries.length} {queries.length === 1 ? "query" : "queries"} · {(calc.lines ?? []).length} lines · {data.evidence.length} evidence items</>}
+                  <span className="text-ink">{calc ? "Estimate ready" : "Waiting for the estimate"}</span>
+                  {calc && <> · {queries.length} {queries.length === 1 ? "query" : "queries"} · {data.evidence.length} evidence items</>}
                 </p>
-                <button type="button" className="tu-focus rounded text-[13px] font-semibold text-green hover:underline" onClick={() => setTab("workpaper")}>
-                  Open workpaper <span aria-hidden>→</span>
+                <button type="button" className="tu-focus rounded text-[13px] text-green hover:underline" onClick={() => setTab("workpaper")}>
+                  View workpaper
                 </button>
               </div>
 
               <div className="grid items-start gap-5 @min-[760px]:grid-cols-[minmax(0,1fr)_330px]">
-                <Card id="checks" title="Control checks" subtitle="Close rules applied to this case" right={
+                <Card id="checks" title="Checks" right={
                   <div className="flex items-center gap-2.5">
-                    <span className="text-[13px] font-semibold text-ink tabular-nums">{score.passed} / {score.total} passed</span>
+                    <span className="text-[13px] text-ink-2 tabular-nums">{score.passed} / {score.total} passed</span>
                     <span aria-hidden className="h-1.5 w-[110px] overflow-hidden rounded-full bg-line">
                       <span className="block h-full rounded-full bg-green-2" style={{ width: `${score.total ? (score.passed / score.total) * 100 : 0}%` }} />
                     </span>
@@ -157,7 +153,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
                 </Card>
 
                 <div className="flex flex-col gap-5">
-                  <Card id="assertions" title="Assertions" subtitle="What this case records"
+                  <Card id="assertions" title="Assertions"
                     right={<span className="text-xs text-ink-3">{assertions(data).filter((a) => a.value).length} recorded</span>}>
                     <ul>
                       {assertions(data).map((a) => (
@@ -166,7 +162,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
                     </ul>
                   </Card>
 
-                  <Card id="corr" title="Correspondence" subtitle="Questions to key owners" right={<Pill variant="warning">Synthetic data</Pill>}>
+                  <Card id="corr" title="Correspondence">
                     {threads.length === 0 ? <EmptyRow>No owner outreach on this case.</EmptyRow> : (
                       <ul>
                         {threads.map(({ out, reply: r }: any) => (
@@ -174,7 +170,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
                             label={`Message to ${out.owner_name ?? "key owner"}`}
                             value={`Sent ${shortTime(out.created_at)} · ${r ? `Replied ${shortTime(r.created_at)}` : "Awaiting reply"}`}
                             right={
-                              <button type="button" className="tu-focus shrink-0 rounded text-[13px] font-semibold text-green hover:underline"
+                              <button type="button" className="tu-focus shrink-0 rounded text-[13px] text-green hover:underline"
                                 aria-label={`View message to ${out.owner_name ?? "key owner"}`} onClick={() => setTab("correspondence")}>View</button>
                             } />
                         ))}
@@ -187,7 +183,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
           </TabPanel>
 
           <TabPanel idPrefix="case" k="activity" value={tab}>
-            <Card id="audit" title="Audit trail" subtitle="Every action on this case, oldest first">
+            <Card id="audit" title="Audit trail">
               {data.audit.length === 0 ? <EmptyRow>No audit events yet.</EmptyRow> : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-[13px]">
@@ -213,11 +209,11 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
           <TabPanel idPrefix="case" k="workpaper" value={tab}>
             <div className="space-y-5">
               <Card id="explain" title="Explanation" subtitle={exp
-                ? `Agent ${exp.agent?.mode ?? "?"} · ${exp.agent?.verified ? "every number verified against the query results" : "fallback text"}`
+                ? (exp.agent?.verified ? "Numbers verified against the queries" : "Fallback text")
                 : undefined}>
                 {exp ? (
                   <div className="px-[18px] py-3.5 text-[13px] text-ink">
-                    <p className="font-semibold">{exp.headline}</p>
+                    <p className="font-medium">{exp.headline}</p>
                     <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-ink-2">{exp.bullets?.map((b: string, i: number) => <li key={i}>{b}</li>)}</ul>
                   </div>
                 ) : <EmptyRow>The explainer runs after the case is estimated.</EmptyRow>}
@@ -243,7 +239,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
           </TabPanel>
 
           <TabPanel idPrefix="case" k="correspondence" value={tab}>
-            <Card id="outreach" title="Correspondence" subtitle="Owner questions and replies" right={<Pill variant="warning">Synthetic data</Pill>}>
+            <Card id="outreach" title="Correspondence" right={<Pill variant="warning">Simulated</Pill>}>
               {data.outreach.length === 0 ? <EmptyRow>No owner outreach on this case.</EmptyRow> : (
                 <div className="space-y-2 px-[18px] py-3.5">
                   {data.outreach.map((m: any) => (
@@ -305,14 +301,14 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
             ? <p className="py-3 text-[13px] text-ink-3">{events.length === 0 ? "No activity yet." : "No events from this source."}</p>
             : groupActivity(shown).map((g) => (
               <section key={g.group} aria-label={g.group}>
-                <h3 className="pt-1 text-[11px] font-semibold tracking-[0.06em] text-ink-3 uppercase">{g.group}</h3>
+                <h3 className="pt-1 text-xs text-ink-3">{g.group}</h3>
                 <ul>{g.items.map((it) => <ActivityEvent key={it.id} item={it} />)}</ul>
               </section>
             ))}
         </div>
         </div>
         <div className="hidden flex-1 min-[1280px]:block" />
-        <Link href={`${root}/close`} className="tu-btn-secondary w-full min-[761px]:max-[1279px]:col-span-2 min-[761px]:max-[1279px]:w-auto min-[761px]:max-[1279px]:justify-self-start">← Back to close</Link>
+        <Link href={`${root}/close`} className="tu-btn-secondary w-full min-[761px]:max-[1279px]:col-span-2 min-[761px]:max-[1279px]:w-auto min-[761px]:max-[1279px]:justify-self-start">Back to close</Link>
       </aside>
     </div>
   );
@@ -322,7 +318,7 @@ function LoadError({ message, retry }: { message: string; retry: () => void }) {
   return (
     <div className="p-8">
       <div role="alert" className="rounded-[10px] border border-amber-line bg-amber-bg p-4 text-[13px] text-ink">
-        <p className="font-semibold">Could not load this case</p>
+        <p className="font-medium">Could not load this case</p>
         <p className="mt-0.5 text-ink-2">{message}</p>
         <button type="button" className="tu-btn-secondary mt-3" onClick={retry}>Try again</button>
       </div>

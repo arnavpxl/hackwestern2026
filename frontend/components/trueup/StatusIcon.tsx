@@ -14,10 +14,10 @@ export default function StatusIcon({ tone, label, className = "" }: { tone: Tone
   }
   if (tone === "flag") {
     return (
-      <span {...a11y} className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-amber text-[10px] leading-none font-bold text-white ${className}`}>!</span>
+      <span {...a11y} className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-amber text-[10px] leading-none font-medium text-white ${className}`}>!</span>
     );
   }
   return (
-    <span {...a11y} className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed border-line-2 bg-surface text-[9px] leading-none font-bold text-ink-3 ${className}`}>–</span>
+    <span {...a11y} className={`inline-flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px] border-dashed border-line-2 bg-surface text-[9px] leading-none font-medium text-ink-3 ${className}`}>–</span>
   );
 }

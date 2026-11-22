@@ -16,14 +16,14 @@ export default function Landing() {
         <div>
           <p className="tu-eyebrow text-green">AI spend operations</p>
           <h1 className="mt-4 max-w-2xl font-serif text-5xl leading-[0.98] sm:text-6xl">Know where every AI dollar went.</h1>
-          <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-2">Detect runaway agents, close usage spend, and reconcile provider invoices with evidence your finance team can trust.</p>
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-2">Catch runaway agents, close the month, and match provider invoices.</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/demo" className="tu-btn-primary px-5 py-3">Explore the synthetic demo</Link>
-            <Link href="/signup" className="tu-btn-secondary px-5 py-3">Connect your own data</Link>
+            <Link href="/demo" className="tu-btn-primary px-5 py-2.5">Try the demo</Link>
+            <Link href="/signup" className="tu-btn-secondary px-5 py-2.5">Connect your data</Link>
           </div>
-          <p className="mt-4 text-xs text-ink-3">The demo uses synthetic providers, credentials, usage, invoices, and spend.</p>
+          <p className="mt-4 text-xs text-ink-3">The demo uses simulated data.</p>
         </div>
-        <div className="overflow-hidden rounded-2xl border border-line bg-slate-50 p-3 shadow-[0_24px_80px_rgba(22,33,27,0.12)]">
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface-2 p-3 shadow-[0_24px_80px_rgba(22,33,27,0.12)]">
           <LandingSpendPreview />
         </div>
       </section>

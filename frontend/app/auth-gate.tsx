@@ -76,22 +76,22 @@ export function LoginForm({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
   return (
     <form onSubmit={submit} className="w-full space-y-4">
         <div>
-          <h1 className="text-lg font-bold text-ink">TokenTrueUp</h1>
-          <p className="text-sm text-slate-500">Sign in to continue</p>
+          <h1 className="text-lg font-medium text-ink">TokenTrueUp</h1>
+          <p className="text-sm text-ink-3">Sign in to continue</p>
         </div>
         <label className="block text-sm">
           Email
-          <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" type="email" autoComplete="username"
+          <input className="mt-1 w-full rounded-lg border border-line-2 px-3 py-2" type="email" autoComplete="username"
             required value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <label className="block text-sm">
           Password
-          <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" type="password"
+          <input className="mt-1 w-full rounded-lg border border-line-2 px-3 py-2" type="password"
             autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         {error && <p className="text-sm text-rose-700">{error}</p>}
         <button className="btn-primary w-full" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-        <p className="text-center text-sm text-ink-3">No account? <Link href="/signup" className="font-semibold text-green hover:underline">Create one</Link></p>
+        <p className="text-center text-sm text-ink-3">No account? <Link href="/signup" className="font-medium text-green hover:underline">Create one</Link></p>
     </form>
   );
 }

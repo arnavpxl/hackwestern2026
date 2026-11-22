@@ -10,8 +10,8 @@ export default function LandingSpendPreview() {
     <figure className="rounded-xl border border-line bg-surface p-4 shadow-sm sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-ink sm:text-base">Spend per minute, last hour</h2>
-          <p className="mt-0.5 text-[10px] text-ink-3 sm:text-xs">Real-time aggregate · usage_1m · Eastern time</p>
+          <h2 className="text-sm font-medium text-ink sm:text-base">Spend per minute, last hour</h2>
+          <p className="mt-0.5 text-[10px] text-ink-3 sm:text-xs">Simulated demo data</p>
         </div>
         <span className="pill bg-green-bg text-green">Live</span>
       </div>
@@ -72,7 +72,7 @@ export default function LandingSpendPreview() {
       <figcaption className="sr-only">A representative preview of the synthetic demo dashboard.</figcaption>
       <div className="mt-3 grid grid-cols-3 gap-2 border-t border-line pt-3">
         {[["Month to date", "$184,290"], ["Current burn", "$391/h"], ["Open cases", "3"]].map(([label, value]) => (
-          <div key={label} className="rounded-lg bg-surface-2 p-2.5"><div className="text-[9px] uppercase tracking-wide text-ink-3">{label}</div><div className="mt-0.5 text-sm font-semibold text-ink">{value}</div></div>
+          <div key={label} className="rounded-lg bg-surface-2 p-2.5"><div className="text-[11px] text-ink-3">{label}</div><div className="mt-0.5 text-sm font-medium text-ink">{value}</div></div>
         ))}
       </div>
     </figure>

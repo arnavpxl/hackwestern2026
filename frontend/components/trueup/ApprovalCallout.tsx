@@ -12,7 +12,7 @@ export default function ApprovalCallout({ rule, busy, onApprove }: {
   return (
     <section aria-labelledby="approval-title" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-amber-line bg-amber-bg px-4 py-3.5">
       <div className="min-w-[240px] flex-1">
-        <h2 id="approval-title" className="text-sm font-semibold text-ink">Proposed rule #{rule.id} needs your approval</h2>
+        <h2 id="approval-title" className="text-sm font-medium text-ink">Proposed rule #{rule.id} needs your approval</h2>
         <p className="mt-0.5 text-[13px] text-ink-2">
           <span className="font-medium">{rule.kind.replace(/_/g, " ")}:</span> {rule.rationale}
           {r?.mape_before != null && r?.mape_after != null && <> Replay cuts mean absolute error from {r.mape_before}% to {r.mape_after}%.</>}

@@ -27,7 +27,7 @@ export default function Tabs<K extends string>({ tabs, value, onChange, idPrefix
             id={`${idPrefix}-tab-${t.key}`} aria-selected={on} aria-controls={`${idPrefix}-panel-${t.key}`}
             tabIndex={on ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => onKey(e, i)}
             className={`tu-focus relative flex shrink-0 focus-visible:outline-offset-[-2px] items-baseline gap-[5px] rounded-t py-2.5 text-sm whitespace-nowrap ${on
-              ? "font-semibold text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-ink"
+              ? "font-medium text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-ink"
               : "text-ink-3 hover:text-ink-2"}`}>
             {t.label}
             {t.count != null && <span className="font-mono text-[11px] font-normal text-ink-3">{t.count}</span>}

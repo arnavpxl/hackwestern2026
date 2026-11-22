@@ -1,11 +1,11 @@
 export type PillVariant = "passed" | "flagged" | "pending" | "na" | "warning" | "neutral";
 
 const STYLE: Record<PillVariant, string> = {
-  passed: "bg-green-bg text-green font-semibold",
-  flagged: "bg-amber-bg text-amber font-semibold",
-  warning: "bg-amber-bg text-amber font-semibold",
-  pending: "bg-surface-2 text-ink-2 font-semibold",
-  na: "border border-line bg-surface text-ink-3 font-semibold",
+  passed: "bg-green-bg text-green font-medium",
+  flagged: "bg-amber-bg text-amber font-medium",
+  warning: "bg-amber-bg text-amber font-medium",
+  pending: "bg-surface-2 text-ink-2 font-medium",
+  na: "border border-line bg-surface text-ink-3 font-medium",
   neutral: "border border-line bg-surface-2 px-[9px] text-ink-2 font-normal",
 };
 

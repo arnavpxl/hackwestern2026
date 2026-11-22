@@ -3,8 +3,8 @@ import StatusIcon from "./StatusIcon";
 
 export function SourceBadge({ source }: { source: ActivityItem["source"] }) {
   return source === "llm"
-    ? <span className="rounded bg-violet-bg px-1.5 py-px text-[10px] font-semibold text-violet">LLM</span>
-    : <span className="rounded border border-line bg-surface-2 px-1.5 py-px text-[10px] font-semibold text-ink-2">Rule</span>;
+    ? <span className="rounded bg-violet-bg px-1.5 py-px text-[10px] font-medium text-violet">LLM</span>
+    : <span className="rounded border border-line bg-surface-2 px-1.5 py-px text-[10px] font-medium text-ink-2">Rule</span>;
 }
 
 /** Figma Row/Activity event */

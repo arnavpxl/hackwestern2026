@@ -44,6 +44,7 @@ export default function Header({ demoMode = false }: { demoMode?: boolean }) {
   const nav = demoMode
     ? [[root, "Live spend"], [`${root}/close`, "Close"], [`${root}/recon`, "Reconciliation"], [`${root}/uth`, "Under the hood"]]
     : [[root, "Overview"], [`${root}/connections`, "Connections"]];
+  const navLabel = demoMode ? "Synthetic demo" : "Your workspace";
 
   useEffect(() => setNavOpen(false), [path]);
   useEffect(() => {
@@ -198,7 +199,8 @@ export default function Header({ demoMode = false }: { demoMode?: boolean }) {
           )}
         </section>}
 
-        <nav aria-label="Primary" className="mt-3 flex flex-col gap-0.5 border-t border-line pt-3">
+        <nav aria-label={navLabel} className="mt-3 flex flex-col gap-0.5 border-t border-line pt-3">
+          <h2 className="mb-1 px-2.5 text-[10px] font-semibold tracking-[0.1em] text-ink-3 uppercase">{navLabel}</h2>
           {nav.map(([href, label]) => (
             <Link key={href} href={href} aria-current={active(href) ? "page" : undefined}
               className={`tu-focus flex items-center gap-2.5 rounded-lg border px-2.5 py-2 text-sm ${active(href)
@@ -209,6 +211,26 @@ export default function Header({ demoMode = false }: { demoMode?: boolean }) {
             </Link>
           ))}
         </nav>
+
+        {!demoMode && (
+          <section className="mt-4 rounded-lg border border-amber-line bg-amber-bg p-3" aria-labelledby="product-demo-title">
+            <h2 id="product-demo-title" className="text-xs font-semibold text-ink">Explore the full product</h2>
+            <p className="mt-1 text-[11px] leading-snug text-ink-2">
+              Provider APIs report hourly usage. The synthetic demo shows real-time detection, close, and reconciliation with simulated direct telemetry.
+            </p>
+            <Link href="/demo" className="tu-focus mt-2 inline-flex rounded text-xs font-semibold text-green hover:underline">
+              Open product demo →
+            </Link>
+          </section>
+        )}
+
+        {demoMode && (
+          <Link href={me?.email === "demo@tokentrueup.local" ? "/" : "/app"}
+            className="tu-focus mt-3 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold text-green hover:bg-green-bg">
+            <span aria-hidden>←</span>
+            {me?.email === "demo@tokentrueup.local" ? "Leave demo" : "Return to your workspace"}
+          </Link>
+        )}
 
         <div className="min-h-4 flex-1" />
 

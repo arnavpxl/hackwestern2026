@@ -56,20 +56,6 @@ export default function ConnectedSpend() {
 
   return (
     <div className="space-y-4">
-      <section className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="tu-eyebrow text-green">Connected workspace</p>
-          <h1 className="mt-1 font-serif text-3xl text-ink">Provider spend analytics</h1>
-          <p className="mt-1 max-w-2xl text-sm text-ink-2">
-            Your OpenAI and Anthropic usage, isolated from the synthetic demo and estimated at public list prices.
-          </p>
-        </div>
-        <Link href="/app/connections" className="tu-btn-secondary">Manage connections</Link>
-      </section>
-
-      <ConnectionHealth connections={data.connections} />
-      {hasUsage && <QualityNotice quality={quality} />}
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Estimated month-to-date" value={dollars(data.summary.mtd)} />
         <Stat label="Projected at month end" value={dollars(data.summary.projected)} />
@@ -102,6 +88,9 @@ export default function ConnectedSpend() {
           </div>
         </section>
       )}
+
+      <ConnectionHealth connections={data.connections} />
+      {hasUsage && <QualityNotice quality={quality} />}
     </div>
   );
 }
@@ -117,7 +106,9 @@ function ConnectionHealth({ connections }: { connections: any[] }) {
         </span>
         <span className="text-ink-3">Last successful import: {when(lastSync)}</span>
       </div>
-      {failing.length > 0 && <Link href="/app/connections" className="font-semibold text-green hover:underline">Review errors →</Link>}
+      <Link href="/app/connections" className="font-semibold text-green hover:underline">
+        {failing.length > 0 ? "Review errors" : "Manage connections"} →
+      </Link>
     </section>
   );
 }

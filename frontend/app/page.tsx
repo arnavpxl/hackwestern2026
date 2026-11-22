@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import LandingActions from "@/components/LandingActions";
 
 export default function Landing() {
   return (
@@ -8,10 +9,7 @@ export default function Landing() {
         <Link href="/" aria-label="True Token Up home" className="tu-focus rounded">
           <Image src="/tokentrueup-logo.svg" alt="True Token Up" width={420} height={200} priority className="h-auto w-[150px] sm:w-[168px]" />
         </Link>
-        <div className="flex items-center gap-2">
-          <Link href="/login" className="tu-btn-ghost">Sign in</Link>
-          <Link href="/signup" className="tu-btn-primary">Create account</Link>
-        </div>
+        <LandingActions />
       </nav>
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 lg:grid-cols-[0.85fr_1.15fr] lg:py-28">
         <div>

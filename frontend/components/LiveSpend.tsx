@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { dollars, useApi } from "@/lib/api";
@@ -71,11 +70,6 @@ export default function LiveSpend() {
 
   return (
     <>
-      <div className="flex justify-end">
-        <Link href="/" className="tu-btn-secondary" aria-label="Leave the synthetic demo and return home">
-          Leave demo <span aria-hidden>→</span>
-        </Link>
-      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="Month-to-date usage spend" value={dollars(mtd)} />
         <Stat label="Projected at month end" value={dollars(proj)} />
@@ -95,7 +89,8 @@ export default function LiveSpend() {
               </div>
               {data.paused && <span className="pill bg-amber-100 text-amber-800">Paused · simulation clock frozen</span>}
             </div>
-            <ResponsiveContainer width="100%" height={420}>
+            <div className="h-[clamp(270px,42vh,420px)]">
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={minute.data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="t" fontSize={11} />
@@ -113,6 +108,7 @@ export default function LiveSpend() {
                 ))}
               </AreaChart>
             </ResponsiveContainer>
+            </div>
           </TabPanel>
 
           <TabPanel idPrefix="spend-view" k="daily" value={view}>
@@ -120,7 +116,8 @@ export default function LiveSpend() {
               <h2 className="font-semibold">Daily spend this period</h2>
               <p className="mt-0.5 text-xs text-ink-3">Daily cost aggregate · usage_1d_cost</p>
             </div>
-            <ResponsiveContainer width="100%" height={420}>
+            <div className="h-[clamp(270px,42vh,420px)]">
+            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={daily.data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="t" fontSize={11} />
@@ -130,6 +127,7 @@ export default function LiveSpend() {
                 {daily.teams.map((t, i) => <Bar key={t} dataKey={t} stackId="1" fill={COLORS[i % 5]} isAnimationActive={false} />)}
               </BarChart>
             </ResponsiveContainer>
+            </div>
           </TabPanel>
 
           <TabPanel idPrefix="spend-view" k="keys" value={view}>
@@ -137,7 +135,7 @@ export default function LiveSpend() {
               <h2 className="font-semibold">API keys</h2>
               <p className="mt-0.5 text-xs text-ink-3">Credentials are write-only and never displayed. Only ownership and spend metadata are shown.</p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="max-h-[42vh] overflow-auto">
               <table className="tbl min-w-[760px]">
                 <thead><tr><th>Provider</th><th>Team</th><th>Owner</th><th className="num">MTD</th><th className="num">Avg/h (24h)</th><th className="num">Now/h</th><th className="num">Projected</th></tr></thead>
                 <tbody>

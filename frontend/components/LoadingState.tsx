@@ -36,7 +36,7 @@ export default function LoadingState({
         <div className="flex max-w-sm flex-col items-center text-center">
           <Image src="/tokentrueup-logo.svg" alt="True Token Up" width={420} height={200} priority className="h-auto w-[168px]" />
           <LoaderMark />
-          <p className="mt-5 font-semibold text-ink">{label}</p>
+          <p className="mt-5 font-medium text-ink">{label}</p>
           <p className="mt-1 text-sm text-ink-3">{detail}</p>
         </div>
       </main>
@@ -51,7 +51,7 @@ function LoadingCard({ label, detail, announce = true }: { label: string; detail
     <section className="card flex min-h-24 items-center gap-4" role={announce ? "status" : undefined} aria-live={announce ? "polite" : undefined} aria-busy="true">
       <LoaderMark compact />
       <div>
-        <p className="font-semibold text-ink">{label}</p>
+        <p className="font-medium text-ink">{label}</p>
         <p className="mt-0.5 text-sm text-ink-3">{detail}</p>
       </div>
     </section>

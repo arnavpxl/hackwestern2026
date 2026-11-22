@@ -61,31 +61,31 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
     <>
       <div className="card">
         <div className="flex flex-wrap items-center gap-3">
-          <Link href={`${root}/connections`} className="text-sm text-indigo-700 hover:underline">← Connections</Link>
-          <h1 className="text-xl font-semibold">{c.label}</h1><Status s={c.status} />
-          {canEdit && c.status === "connected" && <button className="btn-primary ml-auto" disabled={busy} onClick={syncNow}>Sync now</button>}
+          <Link href={`${root}/connections`} className="text-sm text-green hover:underline">← Connections</Link>
+          <h1 className="font-serif text-2xl">{c.label}</h1><Status s={c.status} />
+          {canEdit && c.status === "connected" && <button className="btn ml-auto" disabled={busy} onClick={syncNow}>Sync now</button>}
         </div>
-        <div className="mt-1 text-sm text-slate-600">
-          {c.provider_name} · {c.team} · key ••••{c.key_last4} · last sync {when(c.last_sync_at)}
+        <div className="mt-1 text-sm text-ink-3">
+          {c.provider_name} · {c.team} · ••••{c.key_last4} · synced {when(c.last_sync_at)}
         </div>
-        {c.last_error && <div className="mt-2 rounded bg-rose-50 p-2 text-sm text-rose-800">Last error: {c.last_error}</div>}
-        <div className="mt-3 grid gap-4 text-sm sm:grid-cols-3">
-          <div><div className="text-xs uppercase text-slate-500">Hourly rows stored</div><div className="text-lg font-semibold tabular-nums">{num(data.coverage.rows)}</div></div>
-          <div><div className="text-xs uppercase text-slate-500">Earliest hour</div><div>{when(data.coverage.first_bucket)}</div></div>
-          <div><div className="text-xs uppercase text-slate-500">Latest hour</div><div>{when(data.coverage.last_bucket)}</div></div>
+        {c.last_error && <div className="mt-2 rounded-lg bg-rose-50 p-2 text-sm text-rose-800">{c.last_error}</div>}
+        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
+          <div><div className="text-xs text-ink-3">Hours stored</div><div className="font-serif text-xl tabular-nums">{num(data.coverage.rows)}</div></div>
+          <div><div className="text-xs text-ink-3">From</div><div>{when(data.coverage.first_bucket)}</div></div>
+          <div><div className="text-xs text-ink-3">To</div><div>{when(data.coverage.last_bucket)}</div></div>
         </div>
       </div>
 
       {error && <div className="card border-rose-200 bg-rose-50 text-sm text-rose-800">{error}</div>}
-      {notice && <div className="card border-indigo-200 bg-indigo-50 text-sm text-indigo-900">{notice}</div>}
+      {notice && <div className="card border-line bg-surface-2 text-sm text-ink-2">{notice}</div>}
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Provider keys using the default team</h2>
-        <p className="mb-2 text-sm text-slate-600">This usage is already attributed to {c.team}. Map a provider key only to assign an owner or override its team.</p>
+        <h2 className="font-serif text-xl">Keys on the default team</h2>
+        <p className="mb-2 text-sm text-ink-3">Counted toward {c.team}. Map a key to set an owner or another team.</p>
         <table className="tbl">
-          <thead><tr><th>Provider key</th><th>Workspace</th><th className="num">Tokens (synced)</th><th>Seen</th>{canEdit && <th>Map to</th>}</tr></thead>
+          <thead><tr><th>Provider key</th><th>Workspace</th><th className="num">Tokens</th><th>Seen</th>{canEdit && <th>Map to</th>}</tr></thead>
           <tbody>
-            {data.unmapped.length === 0 && <tr><td colSpan={canEdit ? 5 : 4} className="py-4 text-center text-slate-500">All provider keys have detailed mappings.</td></tr>}
+            {data.unmapped.length === 0 && <tr><td colSpan={canEdit ? 5 : 4} className="py-4 text-center text-ink-3">All provider keys have detailed mappings.</td></tr>}
             {data.unmapped.map((u: any) => {
               const t = current(key(u));
               return (
@@ -97,27 +97,27 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
                   {canEdit && (
                     <td>
                       <div className="flex flex-wrap items-center gap-2">
-                        <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={t.mode}
+                        <select className="rounded-lg border border-line-2 px-2 py-1 text-xs" value={t.mode}
                           onChange={(e) => setCurrent(key(u), { mode: e.target.value })}>
                           <option value="existing">An existing mapping</option>
                           <option value="new">A new mapping</option>
                         </select>
                         {t.mode === "existing" ? (
-                          <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={t.api_key_id}
+                          <select className="rounded-lg border border-line-2 px-2 py-1 text-xs" value={t.api_key_id}
                             onChange={(e) => setCurrent(key(u), { api_key_id: e.target.value })}>
                             <option value="">Choose…</option>
                             {data.our_keys.map((k: any) => <option key={k.id} value={k.id}>{k.label}</option>)}
                           </select>
                         ) : (
                           <>
-                            <input className="w-36 rounded border border-slate-300 px-2 py-1 text-xs" placeholder="Key name"
+                            <input className="w-36 rounded-lg border border-line-2 px-2 py-1 text-xs" placeholder="Key name"
                               value={t.name} onChange={(e) => setCurrent(key(u), { name: e.target.value })} />
-                            <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={t.team_id}
+                            <select className="rounded-lg border border-line-2 px-2 py-1 text-xs" value={t.team_id}
                               onChange={(e) => setCurrent(key(u), { team_id: e.target.value })}>
                               <option value="">Team…</option>
                               {(lists?.teams ?? []).map((tm: any) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
                             </select>
-                            <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={t.owner_id}
+                            <select className="rounded-lg border border-line-2 px-2 py-1 text-xs" value={t.owner_id}
                               onChange={(e) => setCurrent(key(u), { owner_id: e.target.value })}>
                               <option value="">No owner (orphan)</option>
                               {data.owners.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -137,17 +137,17 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Mapped keys</h2>
+        <h2 className="mb-2 font-serif text-xl">Mapped keys</h2>
         <table className="tbl">
           <thead><tr><th>Provider key</th><th>Workspace</th><th>Our key</th><th>Team</th><th>Owner</th>{canEdit && <th></th>}</tr></thead>
           <tbody>
-            {data.mappings.length === 0 && <tr><td colSpan={canEdit ? 6 : 5} className="py-4 text-center text-slate-500">None yet.</td></tr>}
+            {data.mappings.length === 0 && <tr><td colSpan={canEdit ? 6 : 5} className="py-4 text-center text-ink-3">None yet.</td></tr>}
             {data.mappings.map((m: any) => (
               <tr key={`${m.provider_key_id}|${m.workspace_id}`}>
                 <td className="font-mono text-xs">{m.provider_key_id || "(none)"}</td>
                 <td className="font-mono text-xs">{m.workspace_id || "(default)"}</td>
                 <td>{m.label}</td><td>{m.team}</td><td>{m.owner ?? <span className="text-amber-700">orphan</span>}</td>
-                {canEdit && <td><button className="btn" disabled={busy} onClick={() => unmap(m)}>Unmap</button></td>}
+                {canEdit && <td className="text-right"><button className="tu-btn-ghost px-2" disabled={busy} onClick={() => unmap(m)}>Unmap</button></td>}
               </tr>
             ))}
           </tbody>
@@ -155,11 +155,11 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Recent syncs</h2>
+        <h2 className="mb-2 font-serif text-xl">Recent syncs</h2>
         <table className="tbl">
           <thead><tr><th>Started</th><th>Status</th><th>Covered</th><th className="num">Rows</th><th>Error</th></tr></thead>
           <tbody>
-            {data.runs.length === 0 && <tr><td colSpan={5} className="py-4 text-center text-slate-500">No syncs yet.</td></tr>}
+            {data.runs.length === 0 && <tr><td colSpan={5} className="py-4 text-center text-ink-3">No syncs yet.</td></tr>}
             {data.runs.map((r: any, i: number) => (
               <tr key={i}>
                 <td className="whitespace-nowrap">{when(r.started_at)}</td><td><Status s={r.status} /></td>

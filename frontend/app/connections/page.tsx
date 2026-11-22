@@ -136,14 +136,11 @@ export default function Connections() {
     <>
       <div className="card">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h1 className="text-lg font-semibold">Provider connections</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Connect a provider so usage and cost data can be pulled in. Keys are encrypted when saved and never shown
-          again; only the last four characters are displayed. This page automatically checks connected providers when opened and once a minute while it remains open.
-        </p>
+          <div><h1 className="font-serif text-xl">Connections</h1>
+            <p className="mt-1 text-sm text-ink-3">Keys are encrypted and never shown again. Usage syncs automatically.</p>
           </div>
-          {canEdit && <button type="button" className="btn-primary" disabled={busy || !data.connections.some((c: any) => c.status === "connected")} onClick={syncAll}>
-            {busy ? "Syncing…" : "Sync all now"}
+          {canEdit && <button type="button" className="btn" disabled={busy || !data.connections.some((c: any) => c.status === "connected")} onClick={syncAll}>
+            {busy ? "Syncing…" : "Sync now"}
           </button>}
         </div>
       </div>
@@ -151,71 +148,71 @@ export default function Connections() {
       {canEdit && (
         <form className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-5" autoComplete="off" onSubmit={add}>
           <label className="text-sm">Provider
-            <select className="mt-1 w-full rounded border border-slate-300 px-2 py-2" value={form.provider_id}
+            <select className="mt-1 w-full rounded-lg border border-line-2 px-2 py-2" value={form.provider_id}
               onChange={(e) => setForm({ ...form, provider_id: e.target.value })}>
               {data.providers.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
           <label className="text-sm">Name
-            <input className="mt-1 w-full rounded border border-slate-300 px-2 py-2" required maxLength={60}
+            <input className="mt-1 w-full rounded-lg border border-line-2 px-2 py-2" required maxLength={60}
               placeholder="e.g. Platform prod" autoComplete="off" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
           </label>
           <label className="text-sm">Default team
-            <select className="mt-1 w-full rounded border border-slate-300 px-2 py-2" required value={form.team_id}
+            <select className="mt-1 w-full rounded-lg border border-line-2 px-2 py-2" required value={form.team_id}
               onChange={(e) => setForm({ ...form, team_id: e.target.value })}>
               <option value="">Choose…</option>
               {data.teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
           <label className="text-sm">Admin API key
-            <input className="mt-1 w-full rounded border border-slate-300 px-2 py-2 font-mono [-webkit-text-security:disc]" type="text" required
+            <input className="mt-1 w-full rounded-lg border border-line-2 px-2 py-2 font-mono [-webkit-text-security:disc]" type="text" required
               autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"
               autoCapitalize="none" spellCheck={false} readOnly={!keyInputActive} onFocus={() => setKeyInputActive(true)}
               value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
           </label>
           <div className="flex items-end">
-            <button className="btn-primary w-full" disabled={busy || !form.team_id}>{busy ? "Saving…" : "Save connection"}</button>
+            <button className="btn-primary w-full py-2" disabled={busy || !form.team_id}>{busy ? "Connecting…" : "Connect"}</button>
           </div>
         </form>
       )}
 
       {error && <div className="card border-rose-200 bg-rose-50 text-sm text-rose-800">{error}</div>}
-      {notice && <div className="card border-indigo-200 bg-indigo-50 text-sm text-indigo-900">{notice}</div>}
+      {notice && <div className="card border-line bg-surface-2 text-sm text-ink-2">{notice}</div>}
 
       <div className="card overflow-x-auto">
         <table className="tbl">
           <thead><tr><th>Name</th><th>Provider</th><th>Team</th><th>Key</th><th>Status</th><th>Added</th><th>Last sync</th>{canEdit && <th></th>}</tr></thead>
           <tbody>
             {data.connections.length === 0 && (
-              <tr><td colSpan={canEdit ? 8 : 7} className="py-6 text-center text-slate-500">
-                No connections yet.{canEdit ? " Add one above." : ""}
+              <tr><td colSpan={canEdit ? 8 : 7} className="py-6 text-center text-ink-3">
+                No connections yet.
               </td></tr>
             )}
             {data.connections.map((c: any) => (
               <tr key={c.id}>
-                <td className="font-medium"><Link className="text-indigo-700 hover:underline" href={`${root}/connections/${c.id}`}>{c.label}</Link></td>
+                <td><Link className="text-green hover:underline" href={`${root}/connections/${c.id}`}>{c.label}</Link></td>
                 <td>{c.provider_name}</td>
                 <td>{c.team}</td>
                 <td className="font-mono text-xs">{c.status === "connected" ? `••••${c.key_last4}` : "—"}</td>
                 <td><Status s={c.status} /></td>
-                <td className="whitespace-nowrap">{when(c.created_at)}{c.created_by && <div className="text-xs text-slate-500">{c.created_by}</div>}</td>
+                <td className="whitespace-nowrap">{when(c.created_at)}{c.created_by && <div className="text-xs text-ink-3">{c.created_by}</div>}</td>
                 <td>{when(c.last_sync_at)}{c.last_error && <div className="text-xs text-rose-700">{c.last_error}</div>}</td>
                 {canEdit && (
                   <td className="whitespace-nowrap text-right">
                     {c.status === "connected" && (
                       rotating && rotating.id === c.id ? (
                         <span className="flex items-center gap-2">
-                          <input className="w-44 rounded border border-slate-300 px-2 py-1 font-mono text-xs [-webkit-text-security:disc]" type="text"
+                          <input className="w-44 rounded-lg border border-line-2 px-2 py-1 font-mono text-xs [-webkit-text-security:disc]" type="text"
                             autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"
                             autoCapitalize="none" spellCheck={false} placeholder="new key" value={rotating.key}
                             onChange={(e) => setRotating({ id: c.id, key: e.target.value })} />
                           <button className="btn-primary" disabled={busy || !rotating.key} onClick={rotate}>Save</button>
-                          <button className="btn" onClick={() => setRotating(null)}>Cancel</button>
+                          <button className="tu-btn-ghost" onClick={() => setRotating(null)}>Cancel</button>
                         </span>
                       ) : (
-                        <span className="flex justify-end gap-2">
-                          <button className="btn" onClick={() => setRotating({ id: c.id, key: "" })}>Rotate key</button>
-                          <button className="btn" onClick={() => revoke(c.id, c.label)}>Revoke</button>
+                        <span className="flex justify-end gap-1">
+                          <button className="tu-btn-ghost px-2" onClick={() => setRotating({ id: c.id, key: "" })}>Rotate</button>
+                          <button className="tu-btn-ghost px-2 text-red-700 hover:text-red-800" onClick={() => revoke(c.id, c.label)}>Revoke</button>
                         </span>
                       )
                     )}

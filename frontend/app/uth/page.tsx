@@ -18,40 +18,40 @@ export default function UnderTheHood() {
   return (
     <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Tile label="Usage events (hypertable)" value={Number(s.usage_rows).toLocaleString()} sub={`${s.chunks} daily chunks, ${s.compressed_chunks} in columnstore`} />
-        <Tile label="Live ingest" value={`${Math.round(s.ingest_eps ?? 0).toLocaleString()} ev/s`} sub={s.paused ? "generator paused" : "batched COPY every 200 ms"} />
+        <Tile label="Usage events" value={Number(s.usage_rows).toLocaleString()} sub={`${s.chunks} daily chunks, ${s.compressed_chunks} in columnstore`} />
+        <Tile label="Live ingest" value={`${Math.round(s.ingest_eps ?? 0).toLocaleString()} ev/s`} sub={s.paused ? "paused" : "streaming"} />
         {s.columnstore.filter((c: any) => c.name === "usage_events").map((c: any) => (
           <Tile key="c" label="Columnstore, raw events" value={`${c.ratio_pct ?? "—"}% smaller`} sub={`${mb(c.before)} → ${mb(c.after)}`} />
         ))}
-        <Tile label="Last anomaly detection" value={s.anomaly_latency[0] ? `${(s.anomaly_latency[0].detection_latency_ms / 1000).toFixed(1)} s` : "—"} sub="first spike event → case opened, in-DB job" />
+        <Tile label="Last anomaly detection" value={s.anomaly_latency[0] ? `${(s.anomaly_latency[0].detection_latency_ms / 1000).toFixed(1)} s` : "—"} sub="spike to case opened" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold">Query race: 30-day spend by team</h2>
-            <button className="btn-primary ml-auto" disabled={!!busy || !allowed(me, "admin")} onClick={() => go("race", async () => setRace(await post("/api/uth/race")))}>{busy === "race" ? "Racing…" : "Race"}</button>
+            <h2 className="font-serif text-xl">Query speed</h2>
+            <button className="btn ml-auto" disabled={!!busy || !allowed(me, "admin")} onClick={() => go("race", async () => setRace(await post("/api/uth/race")))}>{busy === "race" ? "Running…" : "Run"}</button>
           </div>
           {race ? (
             <div className="mt-3 space-y-2 text-sm">
               <Bar label="Raw hypertable" ms={race.raw.ms} max={race.raw.ms} color="bg-slate-400" />
-              <Bar label="usage_1d continuous aggregate" ms={race.cagg.ms} max={race.raw.ms} color="bg-indigo-600" />
-              <p><b>{race.speedup}× faster</b>, same totals: {race.totals_match ? "yes" : "no"} (raw scans {race.raw.plan.relations_touched} chunk relations)</p>
+              <Bar label="usage_1d continuous aggregate" ms={race.cagg.ms} max={race.raw.ms} color="bg-green-2" />
+              <p className="text-ink-2">{race.speedup}× faster · totals match: {race.totals_match ? "yes" : "no"}</p>
             </div>
-          ) : <p className="mt-3 text-sm text-slate-500">Runs the same query on raw events and on the daily rollup, timed with EXPLAIN ANALYZE.</p>}
+          ) : <p className="mt-3 text-sm text-ink-3">Same query on raw events vs. the daily rollup.</p>}
         </div>
         <div className="card">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold">Freshness probe</h2>
-            <button className="btn-primary ml-auto" disabled={!!busy || !allowed(me, "admin")} onClick={() => go("fresh", async () => setFresh(await post("/api/uth/freshness")))}>{busy === "fresh" ? "Probing…" : "Probe"}</button>
+            <h2 className="font-serif text-xl">Freshness</h2>
+            <button className="btn ml-auto" disabled={!!busy || !allowed(me, "admin")} onClick={() => go("fresh", async () => setFresh(await post("/api/uth/freshness")))}>{busy === "fresh" ? "Running…" : "Run"}</button>
           </div>
-          {fresh ? <p className="mt-3 text-sm">Inserted one event; visible in <code>usage_1m</code> after <b>{fresh.visible_after_ms} ms</b>. {fresh.via}.</p>
-            : <p className="mt-3 text-sm text-slate-500">Inserts an event and times how long until the per-minute rollup shows it.</p>}
+          {fresh ? <p className="mt-3 text-sm text-ink-2">A new event showed up after {fresh.visible_after_ms} ms.</p>
+            : <p className="mt-3 text-sm text-ink-3">Time for a new event to show up.</p>}
         </div>
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Columnstore</h2>
+        <h2 className="mb-2 font-serif text-xl">Compression</h2>
         <table className="tbl"><thead><tr><th>Table</th><th className="num">Before</th><th className="num">After</th><th className="num">Smaller</th><th className="num">Chunks compressed</th></tr></thead>
           <tbody>{s.columnstore.map((c: any) => (
             <tr key={c.name}><td className="font-mono text-xs">{c.name}</td><td className="num">{mb(c.before)}</td><td className="num">{mb(c.after)}</td>
@@ -60,7 +60,7 @@ export default function UnderTheHood() {
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Continuous aggregates</h2>
+        <h2 className="mb-2 font-serif text-xl">Rollups</h2>
         <table className="tbl"><thead><tr><th>View</th><th>Real-time</th><th>Watermark</th><th>Refresh every</th><th>Last refresh</th></tr></thead>
           <tbody>{s.caggs.map((c: any) => (
             <tr key={c.view_name}><td className="font-mono text-xs">{c.view_name}</td><td>{c.materialized_only ? "no" : "yes"}</td>
@@ -69,7 +69,7 @@ export default function UnderTheHood() {
       </div>
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Background jobs</h2>
+        <h2 className="mb-2 font-serif text-xl">Background jobs</h2>
         <table className="tbl"><thead><tr><th>Job</th><th>Target</th><th>Every</th><th>Status</th><th className="num">Runs</th><th className="num">Failures</th><th className="num">Last ms</th></tr></thead>
           <tbody>{s.jobs.map((j: any) => (
             <tr key={j.job_id}><td>{j.proc_name}</td><td className="font-mono text-xs">{j.target || "—"}</td><td>{j.every}</td><td>{j.last_run_status ?? "—"}</td>
@@ -81,8 +81,8 @@ export default function UnderTheHood() {
 }
 
 function Tile({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return <div className="card"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
-    <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div><div className="text-xs text-slate-500">{sub}</div></div>;
+  return <div className="card"><div className="text-xs text-ink-3">{label}</div>
+    <div className="mt-1 font-serif text-2xl tabular-nums">{value}</div><div className="text-xs text-ink-3">{sub}</div></div>;
 }
 
 function Bar({ label, ms, max, color }: { label: string; ms: number; max: number; color: string }) {

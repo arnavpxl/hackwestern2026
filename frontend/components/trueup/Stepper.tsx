@@ -2,8 +2,8 @@ import type { Step } from "@/lib/case-view";
 import StatusIcon from "./StatusIcon";
 
 const VALUE: Record<Step["tone"], string> = {
-  done: "font-semibold text-ink",
-  flag: "font-semibold text-amber",
+  done: "font-medium text-ink",
+  flag: "font-medium text-amber",
   pending: "font-medium text-ink-3",
   skipped: "font-medium text-ink-3",
 };
@@ -20,7 +20,7 @@ export default function Stepper({ steps }: { steps: Step[] }) {
               <span aria-hidden className={`h-0.5 flex-1 ${s.tone === "pending" ? "bg-line" : "bg-green-2"}`} />
             )}
           </div>
-          <p className="mt-1.5 text-[11px] font-semibold tracking-[0.08em] text-ink-3 uppercase">{s.label}</p>
+          <p className="mt-1.5 text-xs text-ink-3">{s.label}</p>
           <p className={`mt-1.5 text-[13px] tabular-nums ${VALUE[s.tone]}`}>{s.value}</p>
           <p className="mt-1.5 truncate text-xs text-ink-3">{s.sub}</p>
         </li>

@@ -64,31 +64,28 @@ export default function LiveSpend() {
   const burn = data.keys.reduce((a: number, k: any) => a + Number(k.run_rate_hourly), 0);
   const pauses = data.pauses ?? [];
   const views: TabDef<SpendView>[] = [
-    { key: "minute", label: "Minute-by-minute" },
-    { key: "daily", label: "Daily spend" },
+    { key: "minute", label: "Per minute" },
+    { key: "daily", label: "Daily" },
     { key: "keys", label: "API keys", count: data.keys.length },
   ];
 
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Month-to-date usage spend" value={dollars(mtd)} />
-        <Stat label="Projected at month end" value={dollars(proj)} />
-        <Stat label="Current burn rate (last 5 min)" value={`${dollars(burn)}/h`} />
+        <Stat label="Month to date" value={dollars(mtd)} />
+        <Stat label="Projected month end" value={dollars(proj)} />
+        <Stat label="Burn rate, last 5 min" value={`${dollars(burn)}/h`} />
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-[10px] border border-line bg-surface">
         <div className="px-5 pt-2">
           <Tabs tabs={views} value={view} onChange={setView} idPrefix="spend-view" ariaLabel="Live spend views" />
         </div>
         <div className="p-5">
           <TabPanel idPrefix="spend-view" k="minute" value={view}>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="font-semibold">Spend per minute, last hour</h2>
-                <p className="mt-0.5 text-xs text-ink-3">Real-time aggregate · usage_1m · Eastern time</p>
-              </div>
-              {data.paused && <span className="pill bg-amber-100 text-amber-800">Paused · simulation clock frozen</span>}
+              <p className="text-sm text-ink-3">Last hour, Eastern time</p>
+              {data.paused && <span className="pill bg-amber-bg text-amber">Paused</span>}
             </div>
             <div className="h-[clamp(270px,42vh,420px)]">
             <ResponsiveContainer width="100%" height="100%">
@@ -113,10 +110,7 @@ export default function LiveSpend() {
           </TabPanel>
 
           <TabPanel idPrefix="spend-view" k="daily" value={view}>
-            <div className="mb-4">
-              <h2 className="font-semibold">Daily spend this period</h2>
-              <p className="mt-0.5 text-xs text-ink-3">Daily cost aggregate · usage_1d_cost</p>
-            </div>
+            <p className="mb-4 text-sm text-ink-3">This month, by day</p>
             <div className="h-[clamp(270px,42vh,420px)]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={daily.data}>
@@ -132,10 +126,6 @@ export default function LiveSpend() {
           </TabPanel>
 
           <TabPanel idPrefix="spend-view" k="keys" value={view}>
-            <div className="mb-4">
-              <h2 className="font-semibold">API keys</h2>
-              <p className="mt-0.5 text-xs text-ink-3">Credentials are write-only and never displayed. Only ownership and spend metadata are shown.</p>
-            </div>
             <div className="max-h-[42vh] overflow-auto">
               <table className="tbl min-w-[760px]">
                 <thead><tr><th>Provider</th><th>Team</th><th>Owner</th><th className="num">MTD</th><th className="num">Avg/h (24h)</th><th className="num">Now/h</th><th className="num">Projected</th></tr></thead>
@@ -145,9 +135,9 @@ export default function LiveSpend() {
                     return (
                       <tr key={k.id} className={hot ? "bg-red-50" : ""}>
                         <td>{k.provider_id}</td><td>{k.team}</td>
-                        <td>{k.owner ?? <span className="pill bg-amber-100 text-amber-800">no owner</span>}</td>
+                        <td>{k.owner ?? <span className="text-amber">No owner</span>}</td>
                         <td className="num">{dollars(k.mtd_dollars)}</td><td className="num">{dollars(k.avg_hourly_24h)}</td>
-                        <td className={`num ${hot ? "font-semibold text-red-700" : ""}`}>{dollars(k.run_rate_hourly)}</td>
+                        <td className={`num ${hot ? "font-medium text-red-700" : ""}`}>{dollars(k.run_rate_hourly)}</td>
                         <td className="num">{dollars(k.projected_month_end)}</td>
                       </tr>
                     );
@@ -163,5 +153,5 @@ export default function LiveSpend() {
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="card"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div></div>;
+  return <div className="card"><div className="text-xs text-ink-3">{label}</div><div className="mt-1 font-serif text-[28px] leading-9 tabular-nums">{value}</div></div>;
 }

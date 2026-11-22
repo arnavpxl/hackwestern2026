@@ -21,9 +21,9 @@ export default function Close() {
     <>
       <div className="card flex flex-wrap items-center gap-6">
         <div>
-          <div className="text-xs uppercase tracking-wide text-slate-500">Close period {String(data.period).slice(0, 7)}</div>
-          <div className="text-2xl font-semibold tabular-nums">{usd(data.accrued_cents)} <span className="text-base font-normal text-slate-500">accrued</span></div>
-          <div className="text-sm text-slate-600">{usd(data.approved_cents)} approved · materiality {usd(data.materiality_cents)} · as of {when(data.sim_now)}</div>
+          <div className="text-xs text-ink-3">Accrued for {String(data.period).slice(0, 7)}</div>
+          <div className="font-serif text-[28px] leading-9 tabular-nums">{usd(data.accrued_cents)}</div>
+          <div className="text-sm text-ink-3">{usd(data.approved_cents)} approved · as of {when(data.sim_now)}</div>
         </div>
         <div className="flex flex-wrap gap-2">
           {Object.entries(data.by_status).map(([k, v]) => <span key={k}><Status s={k} /> {String(v)}</span>)}
@@ -35,18 +35,18 @@ export default function Close() {
         <table className="tbl">
           <thead><tr><th>#</th><th>Type</th><th>Case</th><th>Provider</th><th className="num">Estimate</th><th className="num">Conf.</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {data.cases.length === 0 && <tr><td colSpan={8} className="py-6 text-center text-slate-500">No cases yet. Press "Run close".</td></tr>}
+            {data.cases.length === 0 && <tr><td colSpan={8} className="py-6 text-center text-ink-3">No cases yet.</td></tr>}
             {data.cases.map((c: any) => (
               <tr key={c.id} className={c.type === "anomaly" ? "bg-rose-50/50" : ""}>
-                <td className="text-slate-400">{c.id}</td>
+                <td className="text-ink-3">{c.id}</td>
                 <td>{c.type}</td>
-                <td><Link className="text-indigo-700 hover:underline" href={`${root}/cases/${c.id}`}>{c.title}</Link>
-                  {c.detection_latency_ms != null && <div className="text-xs text-slate-500">detected {(c.detection_latency_ms / 1000).toFixed(1)} s after the spike began</div>}</td>
+                <td><Link className="text-green hover:underline" href={`${root}/cases/${c.id}`}>{c.title}</Link>
+                  {c.detection_latency_ms != null && <div className="text-xs text-ink-3">caught in {(c.detection_latency_ms / 1000).toFixed(1)} s</div>}</td>
                 <td>{c.provider_id}</td>
                 <td className="num">{usd(c.estimate_cents)}</td>
                 <td className="num">{c.confidence != null ? `${Math.round(c.confidence * 100)}%` : "—"}</td>
                 <td><Status s={c.status} /></td>
-                <td>{c.status === "pending_approval" && allowed(me, "controller") && <button className="btn" onClick={() => approve(c.id)}>Approve</button>}</td>
+                <td>{c.status === "pending_approval" && allowed(me, "controller") && <button className="tu-btn-ghost px-2 text-green hover:text-green-2" onClick={() => approve(c.id)}>Approve</button>}</td>
               </tr>
             ))}
           </tbody>

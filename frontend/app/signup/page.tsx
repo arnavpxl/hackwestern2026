@@ -25,7 +25,7 @@ export default function SignupPage() {
   return (
     <main className="flex min-h-screen w-full items-center justify-center bg-paper px-4 py-12">
       <div className="w-full max-w-sm rounded-xl border border-line bg-white p-7 shadow-sm">
-        <h1 className="text-xl font-bold text-ink">Create your TokenTrueUp account</h1>
+        <h1 className="text-xl font-medium text-ink">Create your TokenTrueUp account</h1>
         <p className="mt-1 text-sm text-ink-3">Connect real provider data after signing up.</p>
         <form onSubmit={submit} className="mt-6 space-y-4">
           <label className="block text-sm">Name<input className="mt-1 w-full rounded border border-line-2 px-3 py-2" required autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
@@ -34,7 +34,7 @@ export default function SignupPage() {
           {error && <p className="text-sm text-rose-700">{error}</p>}
           <button className="tu-btn-primary w-full" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
         </form>
-        <p className="mt-4 text-center text-sm text-ink-3">Already have an account? <Link href="/login" className="font-semibold text-green hover:underline">Sign in</Link></p>
+        <p className="mt-4 text-center text-sm text-ink-3">Already have an account? <Link href="/login" className="font-medium text-green hover:underline">Sign in</Link></p>
       </div>
     </main>
   );

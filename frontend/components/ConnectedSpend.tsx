@@ -50,40 +50,36 @@ export default function ConnectedSpend() {
   const hasUsage = quality.first_bucket != null;
   const hasPricedUsage = data.series.length > 0 || data.daily.length > 0;
   const tabs: TabDef<SpendView>[] = [
-    { key: "hourly", label: "Hourly spend" },
-    { key: "daily", label: "Daily spend" },
+    { key: "hourly", label: "Hourly" },
+    { key: "daily", label: "Daily" },
     { key: "ownership", label: "Ownership", count: data.keys.length },
   ];
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Estimated month-to-date" value={dollars(data.summary.mtd)} />
-        <Stat label="Projected at month end" value={dollars(data.summary.projected)} />
-        <Stat label="Average burn rate (24h)" value={`${dollars(data.summary.burn_rate_hourly)}/h`} />
+        <Stat label="Month to date" value={dollars(data.summary.mtd)} />
+        <Stat label="Projected month end" value={dollars(data.summary.projected)} />
+        <Stat label="Burn rate, 24h average" value={`${dollars(data.summary.burn_rate_hourly)}/h`} />
       </div>
 
       {!hasUsage ? <EmptyUsage connections={data.connections} /> : (
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-[10px] border border-line bg-surface">
           <div className="px-5 pt-2">
             <Tabs tabs={tabs} value={view} onChange={setView} idPrefix="connected-spend" ariaLabel="Connected spend views" />
           </div>
           <div className="p-5">
             <TabPanel idPrefix="connected-spend" k="hourly" value={view}>
-              <ChartHeading title="Hourly spend, last 7 days" subtitle="Provider usage reports · hourly resolution · Eastern time" />
+              <ChartHeading title="Last 7 days, Eastern time" />
               {hasPricedUsage ? <AreaSpend data={hourly.data} teams={hourly.teams} /> : <UnpricedEmpty />}
             </TabPanel>
 
             <TabPanel idPrefix="connected-spend" k="daily" value={view}>
-              <ChartHeading title="Daily spend this month" subtitle="Estimated from effective public list prices" />
+              <ChartHeading title="This month, at list prices" />
               {hasPricedUsage ? <DailySpend data={daily.data} teams={daily.teams} /> : <UnpricedEmpty />}
             </TabPanel>
 
             <TabPanel idPrefix="connected-spend" k="ownership" value={view}>
-              <div className="mb-4">
-                <h2 className="font-semibold text-ink">Usage ownership</h2>
-                <p className="mt-0.5 text-xs text-ink-3">Credentials and provider key identifiers are never displayed.</p>
-              </div>
               <OwnershipTable rows={data.keys} />
             </TabPanel>
           </div>
@@ -107,8 +103,8 @@ function ConnectionHealth({ connections }: { connections: any[] }) {
         </span>
         <span className="text-ink-3">Last successful import: {when(lastSync)}</span>
       </div>
-      <Link href="/app/connections" className="font-semibold text-green hover:underline">
-        {failing.length > 0 ? "Review errors" : "Manage connections"} →
+      <Link href="/app/connections" className="text-green hover:underline">
+        {failing.length > 0 ? "Review errors" : "Manage connections"}
       </Link>
     </section>
   );
@@ -120,11 +116,11 @@ function QualityNotice({ quality }: { quality: any }) {
     <section className={`rounded-lg border px-4 py-3 text-sm ${incomplete ? "border-amber-line bg-amber-bg text-amber" : "border-line bg-surface text-ink-2"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p>
-          <strong>{incomplete ? "Partial estimate" : "List-price estimate"}.</strong>{" "}
+          <span className="font-medium">{incomplete ? "Partial estimate" : "List-price estimate"}.</span>{" "}
           {quality.priced_token_percent == null ? "No token usage has been imported yet." : `${quality.priced_token_percent}% of imported tokens have a known price.`}
           {quality.default_team_source_count > 0 && ` ${quality.default_team_source_count} usage source${quality.default_team_source_count === 1 ? " is" : "s are"} using the connection's default team.`}
         </p>
-        {quality.default_team_source_count > 0 && <Link href="/app/connections" className="font-semibold underline">Refine ownership</Link>}
+        {quality.default_team_source_count > 0 && <Link href="/app/connections" className="underline">Refine ownership</Link>}
       </div>
       {incomplete && (
         <p className="mt-1 text-xs">
@@ -180,18 +176,17 @@ function OwnershipTable({ rows }: { rows: any[] }) {
 
 function NoConnections() {
   return <section className="card p-8 text-center">
-    <p className="tu-eyebrow text-green">Connected workspace</p>
-    <h1 className="mt-2 font-serif text-3xl text-ink">Connect a provider to see your analytics</h1>
-    <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-ink-2">Add an OpenAI or Anthropic admin credential. Your real usage remains isolated from the public synthetic demo.</p>
-    <Link href="/app/connections" className="tu-btn-primary mt-5">Add your first connection</Link>
+    <h1 className="font-serif text-3xl text-ink">Connect a provider</h1>
+    <p className="mx-auto mt-2 max-w-xl text-sm text-ink-3">Add an OpenAI or Anthropic admin key to see your spend.</p>
+    <Link href="/app/connections" className="tu-btn-primary mt-5">Add a connection</Link>
   </section>;
 }
 
 function EmptyUsage({ connections }: { connections: any[] }) {
   const hasError = connections.some((connection) => connection.last_error);
   return <section className="card p-8 text-center">
-    <h2 className="font-serif text-2xl text-ink">{hasError ? "Usage import needs attention" : "Waiting for the first usage import"}</h2>
-    <p className="mx-auto mt-2 max-w-xl text-sm text-ink-2">{hasError ? "Open Connections to review the provider error and retry the sync." : "The dashboard will populate after a connection completes its first sync. You can start one now from Connections."}</p>
+    <h2 className="font-serif text-2xl text-ink">{hasError ? "Import needs attention" : "Waiting for the first import"}</h2>
+    <p className="mx-auto mt-2 max-w-xl text-sm text-ink-3">{hasError ? "Check the error on the Connections page." : "Spend appears here after the first sync."}</p>
     <Link href="/app/connections" className="tu-btn-primary mt-5">Open connections</Link>
   </section>;
 }
@@ -200,10 +195,10 @@ function UnpricedEmpty() {
   return <div className="flex h-[420px] items-center justify-center rounded-lg bg-surface-2 text-center text-sm text-ink-3">Usage was imported, but its models do not yet have a matching list price.</div>;
 }
 
-function ChartHeading({ title, subtitle }: { title: string; subtitle: string }) {
-  return <div className="mb-4"><h2 className="font-semibold text-ink">{title}</h2><p className="mt-0.5 text-xs text-ink-3">{subtitle}</p></div>;
+function ChartHeading({ title }: { title: string }) {
+  return <p className="mb-4 text-sm text-ink-3">{title}</p>;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
-  return <div className="card"><div className="text-xs uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div></div>;
+  return <div className="card"><div className="text-xs text-ink-3">{label}</div><div className="mt-1 font-serif text-[28px] leading-9 tabular-nums">{value}</div></div>;
 }

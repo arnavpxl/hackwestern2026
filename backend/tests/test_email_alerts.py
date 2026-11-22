@@ -36,10 +36,16 @@ async def test_anomaly_enqueues_and_sends_one_email(conn, db_url, monkeypatch):
     case_id = await _insert_anomaly(conn, key_id)
     queued = await (
         await conn.execute(
-            "SELECT recipient, status FROM demo_email_notifications WHERE case_id = %s", (case_id,)
+            """SELECT recipient, status,
+                      next_attempt_at >= created_at + interval '4.5 seconds'
+               FROM demo_email_notifications WHERE case_id = %s""",
+            (case_id,),
         )
     ).fetchall()
-    assert queued == [(email, "pending")]
+    assert queued == [(email, "pending", True)]
+    await conn.execute(
+        "UPDATE demo_email_notifications SET next_attempt_at = now() WHERE case_id = %s", (case_id,)
+    )
     await conn.commit()
 
     sent = []

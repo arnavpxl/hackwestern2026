@@ -33,24 +33,30 @@ export default function Header({ demoMode = false }: { demoMode?: boolean }) {
   // anomaly cases are opened by a job inside the database; it NOTIFYs, the API relays over SSE
   useEffect(() => {
     if (!demoMode) return;
+    const alertTimers = new Set<ReturnType<typeof setTimeout>>();
     const es = new EventSource(`${API}/api/events`, { withCredentials: true });
     es.addEventListener("case", (e) => {
       try {
         const d = JSON.parse((e as MessageEvent).data);
         if (d.event === "anomaly_opened") {
           const initial = { caseId: Number(d.case_id), apiKeyId: Number(d.api_key_id) };
-          setRunawayAlert(initial);
           get(`/api/cases/${d.case_id}`).then((payload) => {
             const c = payload.case;
             const calc = c?.calc?.estimate ?? c?.calc ?? {};
-            setRunawayAlert((current) => current?.caseId === initial.caseId ? {
-              ...current,
+            return {
+              ...initial,
               keyLabel: c?.key_label,
               model: calc.model,
               projectedHourlyCents: Number(calc.projected_hourly_cents),
               baselineHourlyCents: Number(calc.baseline_mean_cents),
-            } : current);
-          }).catch(() => {});
+            };
+          }).catch(() => initial).then((alert) => {
+            const timer = setTimeout(() => {
+              alertTimers.delete(timer);
+              setRunawayAlert(alert);
+            }, 5000);
+            alertTimers.add(timer);
+          });
         }
         if (d.event === "invoices_received") setToast("Provider invoices received");
         if (d.event === "demo_email_sent" && Number(d.user_id) === me?.id) {
@@ -58,7 +64,10 @@ export default function Header({ demoMode = false }: { demoMode?: boolean }) {
         }
       } catch {}
     });
-    return () => es.close();
+    return () => {
+      es.close();
+      alertTimers.forEach(clearTimeout);
+    };
   }, [demoMode, me?.id]);
   useEffect(() => {
     if (!toast) return;

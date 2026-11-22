@@ -14,9 +14,9 @@ PY    := cd backend && PYTHONPATH=src .venv/bin
 DBSQL := docker compose exec -T tsdb psql -U postgres -d tokentrueup -v ON_ERROR_STOP=1 -Atc
 API   ?= http://localhost:8000
 
-.PHONY: web up demo flow bench test lint reset psql down down-volumes venv db compress
+.PHONY: web up demo flow bench test lint reset psql down down-volumes venv db compress ensure-key
 
-up: venv db
+up: ensure-key venv db
 	$(PY)/db-migrate
 	@if [ "$$($(DBSQL) 'SELECT count(*) FROM api_keys')" = "0" ]; then \
 	  echo "seeding + backfilling $(ROWS) events"; \
@@ -29,8 +29,17 @@ compress:
 	$(DBSQL) "DO \$$\$$ DECLARE j int; BEGIN FOR j IN SELECT job_id FROM timescaledb_information.jobs \
 	  WHERE proc_name = 'policy_compression' ORDER BY job_id LOOP CALL run_job(j); END LOOP; END \$$\$$"
 
-demo:
+demo: ensure-key
 	$(PY)/uvicorn tokentrueup.api.main:app --port 8000
+
+# Provider credentials are encrypted at rest. For local development, create the gitignored
+# master key once and reuse it so previously stored credentials remain decryptable.
+ensure-key:
+	@if ! grep -q '^TTU_ENCRYPTION_KEY=.' .env 2>/dev/null; then \
+	  touch .env; \
+	  printf '\nTTU_ENCRYPTION_KEY=%s\n' "$$(openssl rand -base64 32 | tr -d '\n')" >> .env; \
+	  echo "generated local TTU_ENCRYPTION_KEY in .env"; \
+	fi
 
 web:
 	cd frontend && ([ -d node_modules ] || npm install --no-audit --no-fund) && npx next dev -p 3000

@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState, type FormEvent, type Re
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { get, post } from "@/lib/api";
+import LoadingState from "@/components/LoadingState";
 
 export type Role = "viewer" | "controller" | "admin";
 export type Me = { id: number; email: string; name: string; role: Role };
@@ -48,8 +49,8 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, [path, router]);
   if (PUBLIC_PAGES.has(path)) return <>{children}</>;
-  if (me === undefined) return <div className="p-8 text-sm text-slate-500">Loading…</div>;
-  if (me === null) return <div className="p-8 text-sm text-slate-500">Taking you to sign in…</div>;
+  if (me === undefined) return <LoadingState variant="page" label={path.startsWith("/demo") ? "Starting the synthetic demo" : "Loading your workspace"} detail="Checking your session and preparing the latest data…" />;
+  if (me === null) return <LoadingState variant="page" label="Taking you to sign in" detail="Your session needs to be refreshed…" />;
   return <MeContext.Provider value={me}>{children}</MeContext.Provider>;
 }
 

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import Tabs, { TabPanel, type TabDef } from "@/components/trueup/Tabs";
 import { dollars, useApi, when } from "@/lib/api";
+import LoadingState from "@/components/LoadingState";
 
 const COLORS = ["#4f46e5", "#0891b2", "#d97706", "#db2777", "#16a34a", "#7c3aed"];
 type SpendView = "hourly" | "daily" | "ownership";
@@ -40,7 +41,7 @@ export default function ConnectedSpend() {
       Could not load connected analytics: {error.message}
     </div>
   );
-  if (!data) return <ConnectedSkeleton />;
+  if (!data) return <LoadingState variant="dashboard" label="Loading your analytics" detail="Fetching the latest usage and spend from your providers…" />;
   if (!data.connections.length) return <NoConnections />;
 
   const hourly = pivot(data.series, "bucket", hourLabel);
@@ -197,10 +198,6 @@ function EmptyUsage({ connections }: { connections: any[] }) {
 
 function UnpricedEmpty() {
   return <div className="flex h-[420px] items-center justify-center rounded-lg bg-surface-2 text-center text-sm text-ink-3">Usage was imported, but its models do not yet have a matching list price.</div>;
-}
-
-function ConnectedSkeleton() {
-  return <div className="space-y-4"><div className="tu-skeleton h-24" /><div className="grid grid-cols-3 gap-4"><div className="tu-skeleton h-24" /><div className="tu-skeleton h-24" /><div className="tu-skeleton h-24" /></div><div className="tu-skeleton h-[500px]" /></div>;
 }
 
 function ChartHeading({ title, subtitle }: { title: string; subtitle: string }) {

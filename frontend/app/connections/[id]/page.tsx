@@ -5,6 +5,7 @@ import { post, useApi, usd, when } from "@/lib/api";
 import { allowed, useMe } from "../../auth-gate";
 import Status from "../../status";
 import { useAppRoot } from "@/lib/routes";
+import LoadingState from "@/components/LoadingState";
 
 const num = (n: number | null | undefined) => (n == null ? "—" : Number(n).toLocaleString("en-US"));
 
@@ -19,7 +20,7 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [target, setTarget] = useState<Record<string, { mode: "existing" | "new"; api_key_id: string; name: string; team_id: string; owner_id: string }>>({});
-  if (!data) return <div className="card">Loading…</div>;
+  if (!data) return <LoadingState label="Loading connection details" detail="Fetching imported sources, mappings, and sync history…" />;
   const c = data.connection;
 
   const run = async (fn: () => Promise<any>, done?: (r: any) => string) => {

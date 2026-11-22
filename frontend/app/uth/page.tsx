@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { post, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
+import LoadingState from "@/components/LoadingState";
 
 const mb = (b: number | null | undefined) => (b ? `${(b / 1e6).toLocaleString("en-US", { maximumFractionDigits: 1 })} MB` : "—");
 
@@ -12,7 +13,7 @@ export default function UnderTheHood() {
   const [busy, setBusy] = useState<string | null>(null);
   const me = useMe();
   const go =async (k: string, fn: () => Promise<void>) => { setBusy(k); try { await fn(); } finally { setBusy(null); } };
-  if (!s) return <div className="card">Loading…</div>;
+  if (!s) return <LoadingState label="Loading system details" detail="Fetching ingestion, storage, and detection metrics…" />;
 
   return (
     <>

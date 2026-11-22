@@ -5,13 +5,14 @@ import { post, usd, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
 import { useAppRoot } from "@/lib/routes";
+import LoadingState from "@/components/LoadingState";
 
 export default function Close() {
   const root = useAppRoot();
   const { data, mutate } = useApi("/api/close/summary");
   const me = useMe();
   const [busy, setBusy] = useState(false);
-  if (!data) return <div className="card">Loading…</div>;
+  if (!data) return <LoadingState label="Loading month-end close" detail="Fetching close cases and approval totals…" />;
 
   const run = async () => { setBusy(true); try { await post("/api/close/run"); } finally { setBusy(false); mutate(); } };
   const approve = async (id: number) => { await post(`/api/cases/${id}/approve`); mutate(); };

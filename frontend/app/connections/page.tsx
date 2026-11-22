@@ -5,6 +5,7 @@ import { post, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
 import { useAppRoot } from "@/lib/routes";
+import LoadingState from "@/components/LoadingState";
 
 export default function Connections() {
   const root = useAppRoot();
@@ -17,7 +18,7 @@ export default function Connections() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [keyInputActive, setKeyInputActive] = useState(false);
-  if (!data) return <div className="card">Loading…</div>;
+  if (!data) return <LoadingState label="Loading connections" detail="Checking your provider connections and sync status…" />;
 
   // The key is sent once, then the field is cleared so it does not stay on screen.
   const add = async (e: FormEvent) => {
@@ -117,9 +118,9 @@ export default function Connections() {
             </select>
           </label>
           <label className="text-sm">Admin API key
-            <input className="mt-1 w-full rounded border border-slate-300 px-2 py-2 font-mono" type="password" required
-              name="ttu-new-provider-admin-key" autoComplete="new-password" data-1p-ignore data-lpignore="true"
-              spellCheck={false} readOnly={!keyInputActive} onFocus={() => setKeyInputActive(true)}
+            <input className="mt-1 w-full rounded border border-slate-300 px-2 py-2 font-mono [-webkit-text-security:disc]" type="text" required
+              autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"
+              autoCapitalize="none" spellCheck={false} readOnly={!keyInputActive} onFocus={() => setKeyInputActive(true)}
               value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
           </label>
           <div className="flex items-end">
@@ -154,9 +155,9 @@ export default function Connections() {
                     {c.status === "connected" && (
                       rotating && rotating.id === c.id ? (
                         <span className="flex items-center gap-2">
-                          <input className="w-44 rounded border border-slate-300 px-2 py-1 font-mono text-xs" type="password"
-                            name={`ttu-rotate-provider-key-${c.id}`} autoComplete="new-password" data-1p-ignore data-lpignore="true"
-                            spellCheck={false} placeholder="new key" value={rotating.key}
+                          <input className="w-44 rounded border border-slate-300 px-2 py-1 font-mono text-xs [-webkit-text-security:disc]" type="text"
+                            autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"
+                            autoCapitalize="none" spellCheck={false} placeholder="new key" value={rotating.key}
                             onChange={(e) => setRotating({ id: c.id, key: e.target.value })} />
                           <button className="btn-primary" disabled={busy || !rotating.key} onClick={rotate}>Save</button>
                           <button className="btn" onClick={() => setRotating(null)}>Cancel</button>

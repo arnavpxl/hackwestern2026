@@ -3,12 +3,13 @@ import { useState } from "react";
 import { post, usd, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
+import LoadingState from "@/components/LoadingState";
 
 export default function Recon() {
   const { data, mutate } = useApi("/api/recon");
   const me = useMe();
   const [busy, setBusy] = useState<string | null>(null);
-  if (!data) return <div className="card">Loading…</div>;
+  if (!data) return <LoadingState label="Loading reconciliation" detail="Fetching invoices, variances, and learned rules…" />;
   const act = async (label: string, path: string) => { setBusy(label); try { await post(path); } finally { setBusy(null); mutate(); } };
   const period = String(data.period);
   const current = data.invoices.filter((i: any) => String(i.period_start) >= period);

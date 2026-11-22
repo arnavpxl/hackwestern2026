@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { dollars, useApi } from "@/lib/api";
 import Tabs, { TabPanel, type TabDef } from "@/components/trueup/Tabs";
+import LoadingState from "@/components/LoadingState";
 
 const COLORS = ["#4f46e5", "#0891b2", "#d97706", "#db2777", "#16a34a"];
 type SpendView = "minute" | "daily" | "keys";
@@ -54,7 +55,7 @@ export default function LiveSpend() {
   const [view, setView] = useState<SpendView>("minute");
   const { data, error } = useApi("/api/spend/live?minutes=60");
   if (error) return <div className="card text-red-700">API unreachable: {String(error.message)}. Is `make demo` running?</div>;
-  if (!data) return <div className="card">Loading…</div>;
+  if (!data) return <LoadingState variant="dashboard" label="Loading demo analytics" detail="Preparing the live spend feed and synthetic usage data…" />;
   const teams = [...new Set<string>(data.keys.map((key: any) => key.team))].sort();
   const minute = minutePivot(data.series, teams, data.sim_now);
   const daily = pivot(data.daily, "day", day);

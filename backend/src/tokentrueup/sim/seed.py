@@ -37,6 +37,12 @@ def seed(conn: psycopg.Connection, now: datetime | None = None) -> None:
             )
             owner_ids[email] = cur.fetchone()[0]
         cur.executemany("INSERT INTO providers VALUES (%s, %s, %s, %s)", PROVIDERS)
+        # The simulator owns the rows above, but a reset must not remove the separate connected-workspace
+        # providers installed by migration 0015.
+        cur.executemany(
+            "INSERT INTO providers VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+            [("anthropic", "Anthropic", "llm", 5), ("openai", "OpenAI", "llm", 5)],
+        )
         for k in KEYS:
             cur.execute(
                 """INSERT INTO api_keys (label, provider_id, team_id, owner_id, is_batch, created_at)

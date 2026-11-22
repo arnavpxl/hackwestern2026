@@ -1,4 +1,4 @@
-"""FastAPI app. Every response carries synthetic=true: ALL DATA IS SYNTHETIC."""
+"""FastAPI app for the isolated synthetic demo and authenticated provider workspace."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from .. import auth, connections
+from .. import auth, connected_spend, connections
 from ..bench import metrics
 from ..config import settings
 from ..estimators.base import jsonable
@@ -112,6 +112,11 @@ ADMIN = [Depends(require("admin"))]
 
 def ok(data: Any) -> dict:
     return {"synthetic": True, "data": jsonable(data)}
+
+
+def connected_ok(data: Any) -> dict:
+    """Envelope for authenticated provider data; never label it synthetic."""
+    return {"synthetic": False, "data": jsonable(data)}
 
 
 async def rows(conn, sql: str, params: Any = None) -> list[dict]:
@@ -421,6 +426,13 @@ async def spend_live(minutes: int = 60):
         return ok({"series": series, "pauses": pauses, "daily": daily, "keys": keys, "sim_now": s["sim_now"],
                    "paused": s["paused"],
                    "period": s["close_period"], "period_end": end})
+
+
+@app.get("/api/spend/connected", dependencies=VIEW)
+async def spend_connected(user: CurrentUser, hours: int = 168):
+    """Estimated analytics from only the signed-in user's provider connections."""
+    async with pool.connection() as conn:
+        return connected_ok(await connected_spend.dashboard(conn, user["id"], hours=hours))
 
 
 # ------------------------------------------------------------------ close & cases

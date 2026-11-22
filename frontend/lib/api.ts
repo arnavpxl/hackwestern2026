@@ -22,8 +22,14 @@ export const post = (path: string, body?: unknown) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   }).then(unwrap);
 
-/** Poll an endpoint (default every 2 s). */
-export function useApi<T = any>(path: string | null, refreshInterval = 2000) {
+/** "price_change" -> "Price change" for labels that come straight from the API. */
+export const humanize = (s: string | null | undefined) => {
+  const t = String(s ?? "").replace(/_/g, " ").trim();
+  return t ? t[0].toUpperCase() + t.slice(1) : "";
+};
+
+/** Poll an endpoint (every 5 s unless a page asks for faster). */
+export function useApi<T = any>(path: string | null, refreshInterval = 5000) {
   return useSWR<T>(path, get, { refreshInterval });
 }
 

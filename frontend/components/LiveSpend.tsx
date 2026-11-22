@@ -53,7 +53,7 @@ function minutePivot(rows: any[], teams: string[], simNow: string, minutes = 60)
 
 export default function LiveSpend() {
   const [view, setView] = useState<SpendView>("minute");
-  const { data, error } = useApi("/api/spend/live?minutes=60");
+  const { data, error } = useApi("/api/spend/live?minutes=60", 2000);
   if (error) return <div className="card text-red-700">API unreachable: {String(error.message)}. Is `make demo` running?</div>;
   if (!data) return <LoadingState variant="dashboard" label="Loading demo analytics" detail="Preparing the live spend feed and synthetic usage data…" />;
   const teams = [...new Set<string>(data.keys.map((key: any) => key.team))].sort();

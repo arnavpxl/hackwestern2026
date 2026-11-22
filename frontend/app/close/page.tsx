@@ -6,6 +6,7 @@ import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
 import { useAppRoot } from "@/lib/routes";
 import LoadingState from "@/components/LoadingState";
+import { TYPE_LABEL } from "@/lib/case-view";
 
 export default function Close() {
   const root = useAppRoot();
@@ -39,8 +40,8 @@ export default function Close() {
             {data.cases.map((c: any) => (
               <tr key={c.id} className={c.type === "anomaly" ? "bg-rose-50/50" : ""}>
                 <td className="text-ink-3">{c.id}</td>
-                <td>{c.type}</td>
-                <td><Link className="text-green hover:underline" href={`${root}/cases/${c.id}`}>{c.title}</Link>
+                <td className="whitespace-nowrap">{TYPE_LABEL[c.type] ?? c.type}</td>
+                <td className="min-w-[240px]"><Link className="text-green hover:underline" href={`${root}/cases/${c.id}`}>{c.title}</Link>
                   {c.detection_latency_ms != null && <div className="text-xs text-ink-3">caught in {(c.detection_latency_ms / 1000).toFixed(1)} s</div>}</td>
                 <td>{c.provider_id}</td>
                 <td className="num">{usd(c.estimate_cents)}</td>

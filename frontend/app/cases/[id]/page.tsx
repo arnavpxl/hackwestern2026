@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { use, useState } from "react";
-import { post, usd, useApi, when } from "@/lib/api";
+import { humanize, post, usd, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../../auth-gate";
 import {
   activity, approverLabel, assertions, calcOf, checkScore, checks, groupActivity, kpis, outreachState, periodRange,
@@ -196,7 +196,7 @@ export default function CaseDetail({ params }: { params: Promise<{ id: string }>
                       <tr key={a.id} className="border-b border-line last:border-b-0 align-top">
                         <td className="px-[18px] py-2 whitespace-nowrap text-ink-2 tabular-nums">{when(a.ts)}</td>
                         <td className="px-[18px] py-2 font-mono text-xs text-ink-2">{a.actor}</td>
-                        <td className="px-[18px] py-2 text-ink">{a.action.replace(/_/g, " ")}</td>
+                        <td className="px-[18px] py-2 text-ink">{humanize(a.action)}</td>
                         <td className="max-w-md truncate px-[18px] py-2 font-mono text-xs text-ink-3" title={JSON.stringify(a.detail)}>{JSON.stringify(a.detail)}</td>
                       </tr>
                     ))}</tbody>

@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { post, usd, useApi, when } from "@/lib/api";
+import { humanize, post, usd, useApi, when } from "@/lib/api";
 import { allowed, useMe } from "../auth-gate";
 import Status from "../status";
 import LoadingState from "@/components/LoadingState";
@@ -43,7 +43,7 @@ export default function Recon() {
               <div className="mt-2 text-sm">
                 <div className="text-ink-2">Accrued {usd(r.accrued_cents)} · variance <span className={Math.abs(r.variance_pct) > 1 ? "text-rose-700" : "text-ink"}>{usd(r.variance_cents)} ({r.variance_pct}%)</span></div>
                 {r.narrative && <div className="mt-1 text-ink-2">{r.narrative.summary}</div>}
-                <ul className="mt-1 list-disc pl-5">{(r.causes ?? []).map((c: any, i: number) => <li key={i}><span className="font-medium">{c.cause.replace(/_/g, " ")}</span> ({usd(c.amount_cents)}): {c.detail}</li>)}</ul>
+                <ul className="mt-1 list-disc pl-5">{(r.causes ?? []).map((c: any, i: number) => <li key={i}><span className="font-medium">{humanize(c.cause)}</span> ({usd(c.amount_cents)}): {c.detail}</li>)}</ul>
               </div>
             )}
           </div>
@@ -57,7 +57,7 @@ export default function Recon() {
           {data.rules.map((rule: any) => (
             <div key={rule.id} className="rounded-lg border border-line p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{rule.kind.replace(/_/g, " ")}</span><span className="text-sm text-ink-3">{rule.provider_id}</span><Status s={rule.status} />
+                <span className="font-medium">{humanize(rule.kind)}</span><span className="text-sm text-ink-3">{rule.provider_id}</span><Status s={rule.status} />
                 {rule.status === "proposed" && allowed(me, "controller") && <span className="ml-auto flex gap-2">
                   <button className="tu-btn-ghost" disabled={!!busy} onClick={() => act(`r${rule.id}`, `/api/rules/${rule.id}/replay`)}>Replay</button>
                   <button className="btn-primary" disabled={!!busy} onClick={() => act(`a${rule.id}`, `/api/rules/${rule.id}/activate`)}>Activate</button>

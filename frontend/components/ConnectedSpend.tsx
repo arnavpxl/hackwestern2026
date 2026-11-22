@@ -121,9 +121,9 @@ function QualityNotice({ quality }: { quality: any }) {
         <p>
           <strong>{incomplete ? "Partial estimate" : "List-price estimate"}.</strong>{" "}
           {quality.priced_token_percent == null ? "No token usage has been imported yet." : `${quality.priced_token_percent}% of imported tokens have a known price.`}
-          {quality.unmapped_key_count > 0 && ` ${quality.unmapped_key_count} usage source${quality.unmapped_key_count === 1 ? " is" : "s are"} not mapped to an owner.`}
+          {quality.default_team_source_count > 0 && ` ${quality.default_team_source_count} usage source${quality.default_team_source_count === 1 ? " is" : "s are"} using the connection's default team.`}
         </p>
-        {quality.unmapped_key_count > 0 && <Link href="/app/connections" className="font-semibold underline">Map usage</Link>}
+        {quality.default_team_source_count > 0 && <Link href="/app/connections" className="font-semibold underline">Refine ownership</Link>}
       </div>
       {incomplete && (
         <p className="mt-1 text-xs">
@@ -169,7 +169,7 @@ function OwnershipTable({ rows }: { rows: any[] }) {
       <tbody>{rows.map((row) => <tr key={row.id} className={!row.mapped ? "bg-amber-50" : ""}>
         <td>{row.provider}</td><td>{row.team}</td>
         <td>{row.owner ?? <span className="text-ink-3">—</span>}</td>
-        <td>{row.mapped ? <span className="pill bg-green-bg text-green">mapped</span> : <span className="pill bg-amber-bg text-amber">needs mapping</span>}</td>
+        <td>{row.mapped ? <span className="pill bg-green-bg text-green">mapped</span> : <span className="pill bg-surface-2 text-ink-2">default team</span>}</td>
         <td className="num">{dollars(row.mtd)}</td><td className="num">{dollars(row.avg_hourly_24h)}</td>
         <td className="num">{dollars(row.current_hour)}</td><td className="num">{dollars(row.projected)}</td>
       </tr>)}</tbody>

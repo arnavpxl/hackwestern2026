@@ -19,12 +19,14 @@ USAGE_SQL = """
 SELECT u.connection_id, u.bucket, u.model, u.workspace_id, u.provider_key_id,
        u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens,
        c.provider_id, p.name AS provider_name, c.label AS connection_label,
+       default_team.name AS default_team,
        k.id AS api_key_id, t.name AS team, o.name AS owner,
        price.input_per_million, price.output_per_million,
        price.cache_read_per_million, price.cache_write_per_million
 FROM provider_usage_hourly u
 JOIN connections c ON c.id = u.connection_id
 JOIN providers p ON p.id = c.provider_id
+JOIN teams default_team ON default_team.id = c.team_id
 LEFT JOIN key_mappings m ON m.connection_id = u.connection_id
   AND m.provider_key_id = u.provider_key_id AND m.workspace_id = u.workspace_id
 LEFT JOIN api_keys k ON k.id = m.api_key_id
@@ -105,7 +107,7 @@ async def dashboard(
             for name in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
         )
         total_tokens += tokens
-        team = row["team"] or "Unmapped"
+        team = row["team"] or row["default_team"]
         bucket = row["bucket"].astimezone(UTC)
         identity = _identity(row)
         item = keys.setdefault(
@@ -197,7 +199,7 @@ async def dashboard(
                 {"provider": provider, "model": model, "tokens": tokens}
                 for (provider, model), tokens in sorted(unpriced.items())
             ],
-            "unmapped_key_count": sum(1 for item in key_rows if not item["mapped"]),
+            "default_team_source_count": sum(1 for item in key_rows if not item["mapped"]),
             "first_bucket": usage[0]["bucket"] if usage else None,
             "last_bucket": usage[-1]["bucket"] if usage else None,
         },

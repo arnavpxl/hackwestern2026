@@ -16,6 +16,7 @@ export default function Connections() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [keyInputActive, setKeyInputActive] = useState(false);
   if (!data) return <div className="card">Loading…</div>;
 
   // The key is sent once, then the field is cleared so it does not stay on screen.
@@ -26,6 +27,7 @@ export default function Connections() {
     try {
       await post("/api/connections", { ...form, team_id: Number(form.team_id) });
       setForm({ ...form, label: "", key: "" });
+      setKeyInputActive(false);
       mutate();
     } catch (err) {
       setError((err as Error).message);
@@ -49,19 +51,17 @@ export default function Connections() {
     }
   };
 
-  const syncNow = async (id: number) => {
+  const syncAll = async () => {
     setError(null);
     setNotice(null);
     setBusy(true);
     try {
-      const r = await post(`/api/connections/${id}/sync`);
-      setNotice(
-        r.status === "ok" ? `Synced ${r.rows} hourly rows.`
-          : r.status === "up_to_date" ? "Already up to date."
-          : r.status === "busy" ? "A sync is already running."
-          : r.status === "error" ? `Sync failed: ${r.error}`
-          : `Skipped: ${r.reason}`,
-      );
+      const r = await post("/api/connections/sync");
+      setNotice(r.errors
+        ? `Sync finished with ${r.errors} error${r.errors === 1 ? "" : "s"}. ${r.rows} hourly rows imported.`
+        : r.rows > 0
+          ? `Synced ${r.rows} hourly rows across ${r.connections} connection${r.connections === 1 ? "" : "s"}.`
+          : `All ${r.connections} connection${r.connections === 1 ? " is" : "s are"} already up to date.`);
       mutate();
     } catch (err) {
       setError((err as Error).message);
@@ -84,15 +84,21 @@ export default function Connections() {
   return (
     <>
       <div className="card">
-        <h1 className="text-lg font-semibold">Provider connections</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h1 className="text-lg font-semibold">Provider connections</h1>
         <p className="mt-1 text-sm text-slate-600">
           Connect a provider so usage and cost data can be pulled in. Keys are encrypted when saved and never shown
           again; only the last four characters are displayed. Connected keys sync automatically every hour.
         </p>
+          </div>
+          {canEdit && <button type="button" className="btn-primary" disabled={busy || !data.connections.some((c: any) => c.status === "connected")} onClick={syncAll}>
+            {busy ? "Syncing…" : "Sync all now"}
+          </button>}
+        </div>
       </div>
 
       {canEdit && (
-        <form className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={add}>
+        <form className="card grid gap-3 sm:grid-cols-2 lg:grid-cols-5" autoComplete="off" onSubmit={add}>
           <label className="text-sm">Provider
             <select className="mt-1 w-full rounded border border-slate-300 px-2 py-2" value={form.provider_id}
               onChange={(e) => setForm({ ...form, provider_id: e.target.value })}>
@@ -103,7 +109,7 @@ export default function Connections() {
             <input className="mt-1 w-full rounded border border-slate-300 px-2 py-2" required maxLength={60}
               placeholder="e.g. Platform prod" autoComplete="off" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
           </label>
-          <label className="text-sm">Team
+          <label className="text-sm">Default team
             <select className="mt-1 w-full rounded border border-slate-300 px-2 py-2" required value={form.team_id}
               onChange={(e) => setForm({ ...form, team_id: e.target.value })}>
               <option value="">Choose…</option>
@@ -112,7 +118,9 @@ export default function Connections() {
           </label>
           <label className="text-sm">Admin API key
             <input className="mt-1 w-full rounded border border-slate-300 px-2 py-2 font-mono" type="password" required
-              autoComplete="off" value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
+              name="ttu-new-provider-admin-key" autoComplete="new-password" data-1p-ignore data-lpignore="true"
+              spellCheck={false} readOnly={!keyInputActive} onFocus={() => setKeyInputActive(true)}
+              value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} />
           </label>
           <div className="flex items-end">
             <button className="btn-primary w-full" disabled={busy || !form.team_id}>{busy ? "Saving…" : "Save connection"}</button>
@@ -147,14 +155,14 @@ export default function Connections() {
                       rotating && rotating.id === c.id ? (
                         <span className="flex items-center gap-2">
                           <input className="w-44 rounded border border-slate-300 px-2 py-1 font-mono text-xs" type="password"
-                            autoComplete="off" placeholder="new key" value={rotating.key}
+                            name={`ttu-rotate-provider-key-${c.id}`} autoComplete="new-password" data-1p-ignore data-lpignore="true"
+                            spellCheck={false} placeholder="new key" value={rotating.key}
                             onChange={(e) => setRotating({ id: c.id, key: e.target.value })} />
                           <button className="btn-primary" disabled={busy || !rotating.key} onClick={rotate}>Save</button>
                           <button className="btn" onClick={() => setRotating(null)}>Cancel</button>
                         </span>
                       ) : (
                         <span className="flex justify-end gap-2">
-                          <button className="btn" disabled={busy} onClick={() => syncNow(c.id)}>Sync now</button>
                           <button className="btn" onClick={() => setRotating({ id: c.id, key: "" })}>Rotate key</button>
                           <button className="btn" onClick={() => revoke(c.id, c.label)}>Revoke</button>
                         </span>

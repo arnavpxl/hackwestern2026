@@ -42,7 +42,7 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
       : r.status === "error" ? `Sync failed: ${r.error}` : `Sync: ${r.status}`);
 
   const key = (u: any) => `${u.provider_key_id}|${u.workspace_id}`;
-  const current = (k: string) => target[k] ?? { mode: "existing" as const, api_key_id: "", name: "", team_id: "", owner_id: "" };
+  const current = (k: string) => target[k] ?? { mode: "existing" as const, api_key_id: "", name: "", team_id: String(c.team_id), owner_id: "" };
   const setCurrent = (k: string, patch: object) => setTarget({ ...target, [k]: { ...current(k), ...patch } });
 
   const map = (u: any) => {
@@ -79,12 +79,12 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
       {notice && <div className="card border-indigo-200 bg-indigo-50 text-sm text-indigo-900">{notice}</div>}
 
       <div className="card overflow-x-auto">
-        <h2 className="mb-2 font-semibold">Provider keys waiting to be mapped</h2>
-        <p className="mb-2 text-sm text-slate-600">Until a provider key is mapped, its usage isn&apos;t attributed to a team.</p>
+        <h2 className="mb-2 font-semibold">Provider keys using the default team</h2>
+        <p className="mb-2 text-sm text-slate-600">This usage is already attributed to {c.team}. Map a provider key only to assign an owner or override its team.</p>
         <table className="tbl">
           <thead><tr><th>Provider key</th><th>Workspace</th><th className="num">Tokens (synced)</th><th>Seen</th>{canEdit && <th>Map to</th>}</tr></thead>
           <tbody>
-            {data.unmapped.length === 0 && <tr><td colSpan={canEdit ? 5 : 4} className="py-4 text-center text-slate-500">Nothing waiting.</td></tr>}
+            {data.unmapped.length === 0 && <tr><td colSpan={canEdit ? 5 : 4} className="py-4 text-center text-slate-500">All provider keys have detailed mappings.</td></tr>}
             {data.unmapped.map((u: any) => {
               const t = current(key(u));
               return (
@@ -98,8 +98,8 @@ export default function ConnectionDetail({ params }: { params: Promise<{ id: str
                       <div className="flex flex-wrap items-center gap-2">
                         <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={t.mode}
                           onChange={(e) => setCurrent(key(u), { mode: e.target.value })}>
-                          <option value="existing">An existing key</option>
-                          <option value="new">A new key</option>
+                          <option value="existing">An existing mapping</option>
+                          <option value="new">A new mapping</option>
                         </select>
                         {t.mode === "existing" ? (
                           <select className="rounded border border-slate-300 px-2 py-1 text-xs" value={t.api_key_id}

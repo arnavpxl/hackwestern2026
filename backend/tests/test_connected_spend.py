@@ -72,8 +72,8 @@ async def test_dashboard_is_scoped_and_prices_known_models(conn):
     assert result["connections"][0]["label"] == "our-anthropic"
     assert result["summary"]["mtd"] == 18.0  # $3 input + $15 output
     assert result["quality"]["priced_token_percent"] == 100.0
-    assert result["quality"]["unmapped_key_count"] == 1
-    assert result["keys"][0]["team"] == "Unmapped"
+    assert result["quality"]["default_team_source_count"] == 1
+    assert result["keys"][0]["team"] == "Platform"
     assert "provider-key" not in str(result)
 
 
@@ -91,7 +91,7 @@ async def test_unpriced_usage_is_reported_and_excluded(conn):
     ]
     assert len(result["keys"]) == 1
     assert result["keys"][0]["mtd"] == 0
-    assert result["quality"]["unmapped_key_count"] == 1
+    assert result["quality"]["default_team_source_count"] == 1
 
 
 async def test_mapped_usage_uses_owner_and_team_without_showing_key_identifier(conn):

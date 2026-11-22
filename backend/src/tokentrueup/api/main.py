@@ -368,14 +368,27 @@ async def connection_rotate(connection_id: int, body: KeyUpdate, user: CurrentUs
     return ok({"rotated": connection_id})
 
 
-@app.post("/api/connections/{connection_id}/sync", dependencies=ADMIN)
-async def connection_sync(connection_id: int):
+@app.post("/api/connections/sync", dependencies=ADMIN)
+async def connections_sync_all(user: CurrentUser):
+    """Sync every active connection owned by the signed-in user."""
     async with pool.connection() as conn:
+        result = await ingest_sync.sync_owned_connections(conn, user["id"])
+    return connected_ok(result)
+
+
+@app.post("/api/connections/{connection_id}/sync", dependencies=ADMIN)
+async def connection_sync(connection_id: int, user: CurrentUser):
+    async with pool.connection() as conn:
+        owned = await rows(
+            conn, "SELECT 1 FROM connections WHERE id = %s AND created_by = %s", (connection_id, user["id"])
+        )
+        if not owned:
+            raise HTTPException(404, "no such connection")
         try:
             result = await ingest_sync.sync_connection(conn, connection_id)
         except LookupError:
             raise HTTPException(404, "no such connection") from None
-    return ok(result)
+    return connected_ok(result)
 
 
 class MapKey(BaseModel):
